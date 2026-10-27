@@ -1,0 +1,6 @@
+{
+  "name": "সীমান্ত সংবাদ",
+  "description": "সীমান্ত ও প্রতিরক্ষা সংক্রান্ত খবরের অটো আপডেট অ্যাপ",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
