@@ -127,6 +127,11 @@ class VideoViewModel @Inject constructor(
         }
     }
 
+    /** Back in the app: refresh videos when the cache is stale (no-op when fresh). */
+    fun refreshIfStale() {
+        viewModelScope.launch { videoSync.sync() }
+    }
+
     /** Pull-to-refresh / retry / header refresh. */
     fun refresh() {
         viewModelScope.launch { videoSync.sync(force = true) }

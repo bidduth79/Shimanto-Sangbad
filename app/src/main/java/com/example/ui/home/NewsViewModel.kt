@@ -43,6 +43,7 @@ class NewsViewModel @Inject constructor(
 
     private val selection = MutableStateFlow(HomeSelection())
     private val isRefreshing = MutableStateFlow(false)
+    private var enrichJob: kotlinx.coroutines.Job? = null
     private var refreshJob: Job? = null
 
     private val keywords = settingsRepository.settings.map { it.keywords }.distinctUntilChanged()
@@ -124,8 +125,20 @@ class NewsViewModel @Inject constructor(
             }
             runCatching { newsAlerts.checkAndNotify() }
             com.example.widget.BorderNewsWidget.refreshAll(appContext)
-            preResolveTopLinks()
-            newsRepository.fillMissingImages()
+            // Link decoding and pictures can take minutes (Google rate limits). They run on their own
+            // so they never hold back the next refresh: a refresh is only "running" while fetching.
+            enrichJob?.cancel()
+            enrichJob = viewModelScope.launch {
+                runCatching { preResolveTopLinks() }
+                runCatching { newsRepository.fillMissingImages() }
+            }
+        }
+    }
+
+    /** Back in the app after a while (the timer below pauses while the phone sleeps): fetch now. */
+    fun refreshIfStale() {
+        viewModelScope.launch {
+            if (System.currentTimeMillis() - settingsRepository.lastSyncAt() > STARTUP_REFRESH_AFTER_MILLIS) refresh()
         }
     }
 

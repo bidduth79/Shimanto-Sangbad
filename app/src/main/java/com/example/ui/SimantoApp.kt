@@ -98,6 +98,12 @@ fun SimantoApp(
         var readerArticle by remember { mutableStateOf<NewsArticle?>(null) }
         var showYouTubeSettings by remember { mutableStateOf(false) }
 
+        // Coming back to the app: fetch news (and videos) if the list is more than a few minutes old
+        androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_START) {
+            newsViewModel.refreshIfStale()
+            videoViewModel.refreshIfStale()
+        }
+
         // A story tapped in a notification or the home-screen widget opens straight in the reader
         LaunchedEffect(openLink) {
             val (link, title) = openLink ?: return@LaunchedEffect
