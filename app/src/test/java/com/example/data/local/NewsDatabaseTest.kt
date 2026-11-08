@@ -103,6 +103,20 @@ class NewsDatabaseTest {
         assertEquals(2L, videos.lastFetchedAt())
     }
 
+    @Test
+    fun `re-reading a rounded 1-hour-ago estimate does not move a video forward`() = runBlocking {
+        val videos = db.videoDao()
+        val first = VideoEntity(
+            videoId = "v2", title = "BGB", description = "", channelTitle = "Local", channelId = null,
+            channelCountry = null, publishedAt = "a", publishedMillis = 1_000L,
+            timeIsEstimate = true, thumbnailUrl = null, fetchedAt = 1L
+        )
+        videos.mergeAll(listOf(first))
+        // read again 40 minutes later: still "1 hour ago", so the estimate is 40 minutes later
+        videos.mergeAll(listOf(first.copy(publishedAt = "b", publishedMillis = 2_400_000L, fetchedAt = 2L)))
+        assertEquals(1_000L, videos.getByIds(listOf("v2")).single().publishedMillis)
+    }
+
     /** Builds a database exactly as version 5 shipped it, from the exported schema file. */
     private fun createVersion5Database(context: Context, name: String, seed: (android.database.sqlite.SQLiteDatabase) -> Unit) {
         val schema = org.json.JSONObject(java.io.File("schemas/com.example.data.local.NewsDatabase/5.json").readText())

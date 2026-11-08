@@ -130,12 +130,15 @@ class BorderNewsWidget : GlanceAppWidget() {
         }
     }
 
+    /**
+     * Clock time ("রাত ১১:২০"), or day and time when older than today. A widget only redraws after
+     * a refresh, so "5 minutes ago" would be wrong a few minutes later; a clock time never is.
+     */
     private fun ago(context: Context, timestamp: Long, now: Long): String {
-        val minutes = ((now - timestamp) / 60_000).coerceAtLeast(0)
-        return when {
-            minutes < 60 -> context.getString(R.string.widget_minutes_ago, bengali(minutes))
-            else -> context.getString(R.string.widget_hours_ago, bengali(minutes / 60))
-        }
+        val zone = java.util.TimeZone.getDefault()
+        val sameDay = (timestamp + zone.getOffset(timestamp)) / DAY_MILLIS == (now + zone.getOffset(now)) / DAY_MILLIS
+        val pattern = if (sameDay) "a h:mm" else "d MMM, a h:mm"
+        return java.text.SimpleDateFormat(pattern, java.util.Locale.forLanguageTag("bn-BD")).format(java.util.Date(timestamp))
     }
 
     private fun bengali(n: Long) = n.toString().map { if (it in '0'..'9') '০' + (it - '0') else it }.joinToString("")

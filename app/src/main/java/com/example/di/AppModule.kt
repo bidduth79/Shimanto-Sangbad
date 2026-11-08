@@ -34,6 +34,7 @@ object AppModule {
         .connectionPool(ConnectionPool(16, 5, TimeUnit.MINUTES))
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(12, TimeUnit.SECONDS)
+        .callTimeout(45, TimeUnit.SECONDS)
         .followRedirects(true)
         .build()
 

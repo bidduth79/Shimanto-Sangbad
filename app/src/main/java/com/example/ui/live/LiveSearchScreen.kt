@@ -189,7 +189,8 @@ fun LiveSearchScreen(
 @Composable
 private fun LiveHeader(postCount: Int) {
     val scheme = MaterialTheme.colorScheme
-    val today = remember { SimpleDateFormat("dd MMMM yyyy", Locale.forLanguageTag("bn-BD")).format(Date()) }
+    val now = com.example.ui.components.LocalNow.current
+    val today = remember(now / 3_600_000L) { SimpleDateFormat("dd MMMM yyyy", Locale.forLanguageTag("bn-BD")).format(Date(now)) }
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(modifier = Modifier.weight(1f)) {
             Text(stringResource(R.string.live_title), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = scheme.onBackground)

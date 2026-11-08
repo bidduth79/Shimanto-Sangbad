@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
@@ -77,7 +78,24 @@ class NewsViewModel @Inject constructor(
         )
     }
 
-    val uiState: StateFlow<HomeUiState> = combine(inputs, selection, isRefreshing, ::buildHomeState)
+    /** Ticks each minute while an hour window is picked, so "last 1 hour" keeps moving on a quiet night. */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private val windowClock = selection
+        .map { it.maxAgeHours != null }
+        .distinctUntilChanged()
+        .flatMapLatest { ticking ->
+            if (!ticking) kotlinx.coroutines.flow.flowOf(0L)
+            else kotlinx.coroutines.flow.flow {
+                while (true) {
+                    emit(System.currentTimeMillis())
+                    kotlinx.coroutines.delay(60_000)
+                }
+            }
+        }
+
+    val uiState: StateFlow<HomeUiState> = combine(inputs, selection, isRefreshing, windowClock) { inputs, selection, refreshing, _ ->
+        buildHomeState(inputs, selection, refreshing)
+    }
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 

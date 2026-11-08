@@ -56,7 +56,9 @@ class VideoViewModel @Inject constructor(
         settingsRepository.settings.map { it.keywords }.distinctUntilChanged()
     ) { rows, keywords ->
         // Only what the current keywords are about (the cache may hold videos of removed keywords)
+        val keepFrom = System.currentTimeMillis() - VideoSync.KEEP_MILLIS
         rows.asSequence()
+            .filter { it.publishedMillis >= keepFrom }
             .map { it.toResult() }
             .filter { keywords.isEmpty() || KeywordMatcher.matches(it.snippet?.title.orEmpty(), keywords) }
             .toList()

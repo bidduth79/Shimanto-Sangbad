@@ -147,7 +147,8 @@ fun VideoList(
             }
         }
     } else {
-        val timeFilteredVideos = remember(videos, maxAgeHours) {
+        val clock = com.example.ui.components.LocalNow.current
+        val timeFilteredVideos = remember(videos, maxAgeHours, if (maxAgeHours != null) clock else 0L) {
             val now = System.currentTimeMillis()
             val cutoff = maxAgeHours?.let { now - it * 3_600_000L }
             if (cutoff == null) videos else videos.filter { video ->

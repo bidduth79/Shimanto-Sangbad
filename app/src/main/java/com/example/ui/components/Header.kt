@@ -47,8 +47,9 @@ fun Header(
     var isSearchExpanded by remember { mutableStateOf(false) }
     var expandedMoreMenu by remember { mutableStateOf(false) }
     val scheme = MaterialTheme.colorScheme
-    val todayLabel = remember {
-        java.text.SimpleDateFormat("EEEE, d MMMM", Locale.forLanguageTag("bn-BD")).format(java.util.Date())
+    val now = LocalNow.current
+    val todayLabel = remember(now / DATE_RECHECK_MILLIS) {
+        java.text.SimpleDateFormat("EEEE, d MMMM", Locale.forLanguageTag("bn-BD")).format(java.util.Date(now))
     }
 
     Column {
@@ -203,3 +204,6 @@ private fun HeaderAction(
         Icon(icon, contentDescription = description, tint = tint, modifier = Modifier.size(22.dp))
     }
 }
+
+/** The header date is re-formatted once an hour, so it turns over shortly after midnight. */
+private const val DATE_RECHECK_MILLIS = 60L * 60 * 1000

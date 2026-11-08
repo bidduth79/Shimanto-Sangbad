@@ -51,7 +51,10 @@ data class VideoEntity(
      * estimate, and a known channel ID or country is never replaced by a missing one.
      */
     fun mergedWith(fresh: VideoEntity): VideoEntity {
-        val keepOldTime = timeIsEstimate.not() && fresh.timeIsEstimate
+        // An exact time beats an estimate. Two estimates ("1 hour ago" read again later) keep the
+        // first one: re-reading the same rounded text later would move the video forward each time.
+        val keepOldTime = (!timeIsEstimate && fresh.timeIsEstimate) ||
+            (timeIsEstimate && fresh.timeIsEstimate && publishedMillis in 1 until fresh.publishedMillis)
         return fresh.copy(
             channelId = fresh.channelId ?: channelId,
             channelCountry = fresh.channelCountry ?: channelCountry,
