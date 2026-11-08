@@ -53,4 +53,15 @@ class NewFeaturesTest {
         assertNull(HeadlineTranslator.sourceLanguageOf("সীমান্তে বিজিবির টহল"))
         assertNull(HeadlineTranslator.sourceLanguageOf("BGB টহল"))
     }
+
+    @Test
+    fun `a story keeps its first time even when the feed moves it forward`() {
+        val now = 1_000_000L
+        // edited later: the feed now says 10 minutes later than when we first saw it
+        assertEquals(500_000L, com.example.data.local.stableTimestamp(stored = 500_000L, fetched = 900_000L, now = now))
+        // new story: its own time
+        assertEquals(900_000L, com.example.data.local.stableTimestamp(stored = null, fetched = 900_000L, now = now))
+        // a feed in the wrong time zone gives a future time: shown as now, not "in 7 minutes"
+        assertEquals(now, com.example.data.local.stableTimestamp(stored = null, fetched = now + 420_000L, now = now))
+    }
 }

@@ -85,13 +85,23 @@ interface NewsDao {
         val knownImages = articles.map { it.link }.chunked(500)
             .flatMap { getImageUrls(it) }
             .associate { it.link to it.imageUrl }
+        // Some feeds move a story's pubDate forward every time they edit it, which kept old stories
+        // pinned to the top as "minutes ago". A story keeps the time it was first seen with.
+        val knownTimes = articles.map { it.link }.chunked(500)
+            .flatMap { getTimestamps(it) }
+            .associate { it.link to it.timestamp }
+        val now = System.currentTimeMillis()
         insertAll(articles.map { article ->
             article.copy(
                 isSaved = article.isSaved || article.link in saved,
-                imageUrl = article.imageUrl ?: knownImages[article.link]
+                imageUrl = article.imageUrl ?: knownImages[article.link],
+                timestamp = stableTimestamp(knownTimes[article.link], article.timestamp, now)
             )
         })
     }
+
+    @Query("SELECT link, timestamp FROM news_articles WHERE link IN (:links)")
+    suspend fun getTimestamps(links: List<String>): List<LinkAndTime>
 
     @Query("SELECT link, imageUrl FROM news_articles WHERE link IN (:links) AND imageUrl IS NOT NULL")
     suspend fun getImageUrls(links: List<String>): List<LinkAndImage>
@@ -119,3 +129,14 @@ interface NewsDao {
 data class LinkAndTitle(val link: String, val title: String)
 
 data class LinkAndImage(val link: String, val imageUrl: String?)
+
+data class LinkAndTime(val link: String, val timestamp: Long)
+
+/**
+ * The time to store for a story: never later than now (a wrong time zone in a feed must not show
+ * "in 7 minutes"), and never later than the time it was first stored with.
+ */
+fun stableTimestamp(stored: Long?, fetched: Long, now: Long): Long {
+    val clamped = minOf(fetched, now)
+    return if (stored != null && stored > 0) minOf(stored, clamped) else clamped
+}
