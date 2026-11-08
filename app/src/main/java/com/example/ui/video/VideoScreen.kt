@@ -23,6 +23,8 @@ import com.example.data.YouTubeSearchResult
 import androidx.compose.ui.res.stringResource
 import com.example.R
 import com.example.ui.components.FilterChipItem
+import com.example.ui.components.LocalBottomBarSpace
+import com.example.ui.components.ScrollToTopOnReselect
 import com.example.ui.components.OnlyUnreadToggle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -265,9 +267,12 @@ fun VideoList(
                     }
                 }
             } else {
+                val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+                ScrollToTopOnReselect(listState)
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 16.dp, bottom = LocalBottomBarSpace.current + 12.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     items(shownVideos, key = { it.id?.videoId ?: it.hashCode().toString() }) { video ->

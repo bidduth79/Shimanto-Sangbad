@@ -66,7 +66,8 @@ fun HomeScreen(
             onSpeakClick = actions.speak,
             onCopyClick = actions.copyLink,
             onWhatsAppClick = actions.shareToWhatsApp,
-            onBookmarkClick = actions.toggleBookmark
+            onBookmarkClick = actions.toggleBookmark,
+            relatedReports = state.relatedReports
         )
     }
 }

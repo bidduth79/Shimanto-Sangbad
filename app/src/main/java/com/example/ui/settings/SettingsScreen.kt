@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material3.LinearProgressIndicator
@@ -112,6 +113,10 @@ fun SettingsScreen(
     onSaveYoutubeSettings: (apiKey: String, channelIds: String) -> Unit,
     onToggleDarkMode: () -> Unit,
     onToggleNewBadges: () -> Unit,
+    onToggleAlerts: () -> Unit,
+    onToggleTranslate: () -> Unit,
+    onAddAlertKeyword: (String) -> Unit,
+    onRemoveAlertKeyword: (String) -> Unit,
     onClearCache: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -125,11 +130,13 @@ fun SettingsScreen(
         )
     }
 
+    val scrollState = rememberScrollState()
+    com.example.ui.components.ScrollToTopOnReselect(scrollState)
     Column(
         modifier = modifier
             .fillMaxSize()
             .imePadding()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scrollState)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -154,6 +161,33 @@ fun SettingsScreen(
             RssFeedsSection(feeds = state.rssFeeds, onAdd = onAddRssFeed, onRemove = onRemoveRssFeed)
         }
 
+        GroupLabel(stringResource(R.string.settings_group_alerts))
+        SettingsCard(modifier = Modifier.testTag("alerts_card")) {
+            SettingRow(
+                icon = Icons.Default.NotificationsActive,
+                iconTint = Color(0xFFDC2626),
+                title = stringResource(R.string.settings_alerts_title),
+                subtitle = stringResource(if (state.alertsEnabled) R.string.settings_alerts_on else R.string.settings_alerts_off),
+                onClick = onToggleAlerts
+            ) {
+                Switch(checked = state.alertsEnabled, onCheckedChange = { onToggleAlerts() })
+            }
+            AnimatedVisibility(visible = state.alertsEnabled) {
+                Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp)) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        stringResource(R.string.settings_alert_words, state.alertKeywords.size),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    KeywordsSection(keywords = state.alertKeywords, onAdd = onAddAlertKeyword, onRemove = onRemoveAlertKeyword)
+                }
+            }
+        }
+
         GroupLabel(stringResource(R.string.settings_group_video))
         YouTubeCard(state = state, onOpen = { showYouTubeDialog = true })
 
@@ -167,6 +201,16 @@ fun SettingsScreen(
                 onClick = onToggleDarkMode
             ) {
                 Switch(checked = state.isDarkMode, onCheckedChange = { onToggleDarkMode() })
+            }
+            RowDivider()
+            SettingRow(
+                icon = Icons.Default.Translate,
+                iconTint = Color(0xFF0EA5E9),
+                title = stringResource(R.string.settings_translate_title),
+                subtitle = stringResource(if (state.translateHeadlines) R.string.settings_translate_on else R.string.settings_translate_off),
+                onClick = onToggleTranslate
+            ) {
+                Switch(checked = state.translateHeadlines, onCheckedChange = { onToggleTranslate() })
             }
             RowDivider()
             SettingRow(
@@ -202,7 +246,7 @@ fun SettingsScreen(
                 subtitle = stringResource(R.string.settings_about_version, state.appVersion)
             )
         }
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(com.example.ui.components.LocalBottomBarSpace.current))
     }
 }
 

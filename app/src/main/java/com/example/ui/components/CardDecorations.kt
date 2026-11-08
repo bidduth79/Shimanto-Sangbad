@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
@@ -62,4 +63,30 @@ fun Modifier.translucentCircles(
         radius = base * 0.06f,
         center = Offset(w * (0.56f + 0.05f * jx), h * 0.18f - shift * 0.4f)
     )
+}
+
+/**
+ * The border-landscape line drawing (pillar, fence, hills, watchtower, patrol) behind a card,
+ * across its full width at the bottom. It is a pure alpha mask tinted with the text colour at a
+ * very low opacity, so it reads as texture and never competes with the headline.
+ */
+@androidx.compose.runtime.Composable
+fun Modifier.borderLineArt(isDark: Boolean): Modifier {
+    val art = androidx.compose.ui.graphics.ImageBitmap.imageResource(com.example.R.drawable.border_line_art)
+    val tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurface
+    val filter = androidx.compose.runtime.remember(tint) {
+        androidx.compose.ui.graphics.ColorFilter.tint(tint, androidx.compose.ui.graphics.BlendMode.SrcIn)
+    }
+    val alpha = if (isDark) 0.13f else 0.10f
+    return this.drawBehind {
+        val width = size.width.toInt()
+        val height = (art.height.toFloat() * width / art.width).toInt()
+        drawImage(
+            image = art,
+            dstOffset = androidx.compose.ui.unit.IntOffset(0, (size.height - height).toInt()),
+            dstSize = androidx.compose.ui.unit.IntSize(width, height),
+            alpha = alpha,
+            colorFilter = filter
+        )
+    }
 }

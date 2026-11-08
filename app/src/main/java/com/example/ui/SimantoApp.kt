@@ -3,7 +3,23 @@ package com.example.ui
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.unit.dp
+import com.example.ui.components.HideOnScrollConnection
+import com.example.ui.components.LocalBottomBarSpace
+import com.example.ui.components.LocalScrollToTopTick
+import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.rememberHazeState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -61,7 +77,11 @@ private object Destination {
 
 /** App root: theme, bottom navigation and the screen for the selected destination. */
 @Composable
-fun SimantoApp(onDarkModeChanged: (Boolean) -> Unit) {
+fun SimantoApp(
+    onDarkModeChanged: (Boolean) -> Unit,
+    openLink: Pair<String, String>? = null,
+    onOpenLinkHandled: () -> Unit = {}
+) {
     val newsViewModel: NewsViewModel = hiltViewModel()
     val videoViewModel: VideoViewModel = hiltViewModel()
     val settingsViewModel: SettingsViewModel = hiltViewModel()
@@ -77,6 +97,31 @@ fun SimantoApp(onDarkModeChanged: (Boolean) -> Unit) {
         var destination by rememberSaveable { mutableIntStateOf(Destination.HOME) }
         var readerArticle by remember { mutableStateOf<NewsArticle?>(null) }
         var showYouTubeSettings by remember { mutableStateOf(false) }
+
+        // A story tapped in a notification or the home-screen widget opens straight in the reader
+        LaunchedEffect(openLink) {
+            val (link, title) = openLink ?: return@LaunchedEffect
+            val article = (home.visibleArticles + home.savedNews).firstOrNull { it.link == link }
+                ?: NewsArticle(link = link, title = title, pubDate = "", source = "", timestamp = 0L)
+            destination = Destination.HOME
+            newsViewModel.markVisited(article)
+            readerArticle = article
+            onOpenLinkHandled()
+        }
+
+        // Breaking-news alerts need the Android 13+ notification permission: ask once
+        val notificationPermission = androidx.activity.compose.rememberLauncherForActivityResult(
+            androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+        ) { }
+        LaunchedEffect(settings.alertsEnabled) {
+            if (settings.alertsEnabled && android.os.Build.VERSION.SDK_INT >= 33 &&
+                androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED &&
+                settingsViewModel.claimNotificationPermissionAsk()
+            ) {
+                notificationPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
 
         val actions = rememberNewsActions(
             resolveLink = newsViewModel::resolveLink,
@@ -150,22 +195,33 @@ fun SimantoApp(onDarkModeChanged: (Boolean) -> Unit) {
             else video.videos.count { com.example.ui.video.parseYouTubeTimestampMillis(it.snippet?.publishedAt) > since }
         }
 
+        // Floating glass bar: hidden while scrolling down, back on any scroll up or tab change.
+        // Tapping the open tab again scrolls its list to the top (and refreshes news/videos).
+        var barVisible by remember { mutableStateOf(true) }
+        var scrollToTopTick by remember { mutableIntStateOf(0) }
+        LaunchedEffect(destination) { barVisible = true }
+        val hideOnScroll = remember { HideOnScrollConnection { visible -> barVisible = visible } }
+        val hazeState = rememberHazeState()
+        val barSpace = 84.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             containerColor = MaterialTheme.colorScheme.background,
-            bottomBar = {
-                BottomNavBar(
-                    selectedTab = destination,
-                    savedCount = home.savedNews.size,
-                    rssCount = home.rssFeeds.size,
-                    newNewsCount = newNewsCount,
-                    newVideoCount = newVideoCount,
-                    onTabSelected = { destination = it }
-                )
-            },
             contentWindowInsets = ScaffoldDefaults.contentWindowInsets
         ) { innerPadding ->
-            Column(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+          Box(modifier = Modifier.fillMaxSize()) {
+           CompositionLocalProvider(
+               LocalBottomBarSpace provides barSpace,
+               LocalScrollToTopTick provides scrollToTopTick,
+               com.example.ui.components.LocalTranslateHeadlines provides settings.translateHeadlines
+           ) {
+            Column(
+                modifier = Modifier
+                    .padding(top = innerPadding.calculateTopPadding())
+                    .fillMaxSize()
+                    .hazeSource(hazeState)
+                    .nestedScroll(hideOnScroll)
+            ) {
                 val header = @Composable { showFilterToggle: Boolean ->
                     Header(
                         query = home.selection.searchQuery,
@@ -265,6 +321,10 @@ fun SimantoApp(onDarkModeChanged: (Boolean) -> Unit) {
                         onSaveYoutubeSettings = saveYoutube,
                         onToggleDarkMode = settingsViewModel::toggleDarkMode,
                         onToggleNewBadges = settingsViewModel::toggleNewBadges,
+                        onToggleAlerts = settingsViewModel::toggleAlerts,
+                        onToggleTranslate = settingsViewModel::toggleTranslate,
+                        onAddAlertKeyword = settingsViewModel::addAlertKeyword,
+                        onRemoveAlertKeyword = settingsViewModel::removeAlertKeyword,
                         onClearCache = {
                             settingsViewModel.clearCache {
                                 context.toast(R.string.toast_cache_cleared)
@@ -274,6 +334,34 @@ fun SimantoApp(onDarkModeChanged: (Boolean) -> Unit) {
                     )
                 }
             }
+           }
+            AnimatedVisibility(
+                visible = barVisible,
+                modifier = Modifier.align(Alignment.BottomCenter),
+                enter = slideInVertically { it } + fadeIn(),
+                exit = slideOutVertically { it } + fadeOut()
+            ) {
+                BottomNavBar(
+                    selectedTab = destination,
+                    savedCount = home.savedNews.size,
+                    rssCount = home.rssFeeds.size,
+                    newNewsCount = newNewsCount,
+                    newVideoCount = newVideoCount,
+                    hazeState = hazeState,
+                    onTabSelected = { tab ->
+                        if (tab == destination) {
+                            scrollToTopTick++
+                            when (tab) {
+                                Destination.HOME -> newsViewModel.refresh()
+                                Destination.VIDEO -> videoViewModel.refresh()
+                            }
+                        } else {
+                            destination = tab
+                        }
+                    }
+                )
+            }
+          }
         }
     }
 }

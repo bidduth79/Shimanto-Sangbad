@@ -308,11 +308,12 @@ private fun ColumnScope.SocialFeed(
 
     val listState = rememberLazyListState()
     Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+        com.example.ui.components.ScrollToTopOnReselect(listState)
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = PaddingValues(bottom = 80.dp)
+            contentPadding = PaddingValues(bottom = com.example.ui.components.LocalBottomBarSpace.current + 12.dp)
         ) {
             items(visible, key = { it.link }) { article ->
                 SocialNewsCard(
@@ -345,7 +346,7 @@ private fun ColumnScope.KeywordQuickSearch(keywords: List<String>, onSearch: (Se
     LazyColumn(
         modifier = Modifier.weight(1f),
         verticalArrangement = Arrangement.spacedBy(10.dp),
-        contentPadding = PaddingValues(bottom = 16.dp)
+        contentPadding = PaddingValues(bottom = com.example.ui.components.LocalBottomBarSpace.current + 12.dp)
     ) {
         items(keywords, key = { it }) { keyword ->
             val shape = RoundedCornerShape(14.dp)

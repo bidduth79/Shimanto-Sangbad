@@ -137,7 +137,8 @@ class VideoViewModel @Inject constructor(
     }
 
     private companion object {
-        const val PREFETCH_DELAY_MILLIS = 6_000L
+        // after the news has had its first refresh to itself
+        const val PREFETCH_DELAY_MILLIS = 20_000L
         const val AUTO_REFRESH_MILLIS = 10L * 60 * 1000
     }
 }

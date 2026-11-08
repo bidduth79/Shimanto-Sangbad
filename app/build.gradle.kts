@@ -9,6 +9,7 @@ plugins {
   alias(libs.plugins.google.services)
   alias(libs.plugins.hilt)
   alias(libs.plugins.androidx.room)
+  alias(libs.plugins.androidx.baselineprofile)
 }
 
 android { 
@@ -78,6 +79,12 @@ secrets {
   defaultPropertiesFileName = ".env.example"
 }
 
+// The build types the Baseline Profile plugin adds for measuring are installed on a test device,
+// so they are signed with the local debug key (the real release signing is untouched).
+android.buildTypes.matching { it.name == "nonMinifiedRelease" || it.name == "benchmarkRelease" }.configureEach {
+  signingConfig = android.signingConfigs.getByName("debug")
+}
+
 // Export Room schemas so every database version change ships a real, tested migration.
 room { schemaDirectory("$projectDir/schemas") }
 
@@ -114,6 +121,11 @@ dependencies {
   implementation(libs.androidx.hilt.lifecycle.viewmodel.compose)
   implementation(libs.androidx.hilt.work)
   implementation(libs.coil.compose)
+  implementation(libs.haze)
+  implementation(libs.androidx.glance.appwidget)
+  implementation(libs.mlkit.translate)
+  implementation(libs.androidx.profileinstaller)
+  baselineProfile(project(":baselineprofile"))
   implementation(libs.converter.moshi)
   // implementation(libs.firebase.ai)
   // Uncomment to use Firestore:

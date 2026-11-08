@@ -35,7 +35,10 @@ data class SettingsUiState(
     val appVersion: String = "",
     val showNewBadges: Boolean = true,
     val lastSeenHomeAt: Long = 0L,
-    val lastSeenVideoAt: Long = 0L
+    val lastSeenVideoAt: Long = 0L,
+    val alertsEnabled: Boolean = true,
+    val translateHeadlines: Boolean = true,
+    val alertKeywords: List<String> = emptyList()
 ) {
     val hasYoutubeApiKey: Boolean get() = youtubeApiKey.isNotBlank()
 }
@@ -68,7 +71,10 @@ class SettingsViewModel @Inject constructor(
             appVersion = BuildConfig.VERSION_NAME,
             showNewBadges = s.showNewBadges,
             lastSeenHomeAt = s.lastSeenHomeAt,
-            lastSeenVideoAt = s.lastSeenVideoAt
+            lastSeenVideoAt = s.lastSeenVideoAt,
+            alertsEnabled = s.alertsEnabled,
+            translateHeadlines = s.translateHeadlines,
+            alertKeywords = s.alertKeywords
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, SettingsUiState())
 
@@ -81,6 +87,17 @@ class SettingsViewModel @Inject constructor(
     fun toggleDarkMode() = launch { settingsRepository.setDarkMode(!uiState.value.isDarkMode) }
     fun toggleNewBadges() = launch { settingsRepository.setShowNewBadges(!uiState.value.showNewBadges) }
     fun markHomeSeen() = launch { settingsRepository.markHomeSeen() }
+    fun toggleTranslate() = launch { settingsRepository.setTranslateHeadlines(!uiState.value.translateHeadlines) }
+    fun toggleAlerts() = launch { settingsRepository.setAlertsEnabled(!uiState.value.alertsEnabled) }
+    fun addAlertKeyword(keyword: String) = launch { settingsRepository.addAlertKeyword(keyword) }
+    fun removeAlertKeyword(keyword: String) = launch { settingsRepository.removeAlertKeyword(keyword) }
+
+    /** True the first time only: the notification permission is asked for once per install. */
+    suspend fun claimNotificationPermissionAsk(): Boolean {
+        if (settingsRepository.notificationPermissionAsked()) return false
+        settingsRepository.setNotificationPermissionAsked()
+        return true
+    }
     fun markVideoSeen() = launch { settingsRepository.markVideoSeen() }
 
     /** Clears cached news (bookmarks are kept), decoded links and the HTTP/image cache. */

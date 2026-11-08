@@ -25,3 +25,4 @@ dependencyResolutionManagement {
 rootProject.name = "Simanto Sangbad"
 
 include(":app")
+include(":baselineprofile")

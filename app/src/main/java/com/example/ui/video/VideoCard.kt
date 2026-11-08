@@ -119,6 +119,7 @@ fun VideoCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
+                com.example.ui.components.TranslatedLine(title, modifier = Modifier.padding(top = 4.dp))
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(
                     verticalAlignment = Alignment.CenterVertically,

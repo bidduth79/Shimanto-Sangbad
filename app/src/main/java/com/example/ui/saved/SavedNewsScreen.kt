@@ -104,11 +104,12 @@ fun SavedNewsScreen(
         } else {
             val savedListState = androidx.compose.foundation.lazy.rememberLazyListState()
             Box(modifier = Modifier.fillMaxSize()) {
+                com.example.ui.components.ScrollToTopOnReselect(savedListState)
                 LazyColumn(
                     state = savedListState,
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(bottom = 80.dp)
+                    contentPadding = PaddingValues(bottom = com.example.ui.components.LocalBottomBarSpace.current + 12.dp)
                 ) {
                     items(savedArticles, key = { it.link }) { article ->
                         val isVisited = article.link in visitedLinks

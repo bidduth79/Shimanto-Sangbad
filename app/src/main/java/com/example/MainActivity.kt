@@ -1,5 +1,6 @@
 package com.example
 
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.os.SystemClock
@@ -16,6 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
+import com.example.data.NewsAlerts
 import com.example.ui.SimantoApp
 import com.example.ui.intro.LaunchIntro
 import dagger.hilt.android.AndroidEntryPoint
@@ -24,6 +26,9 @@ import dagger.hilt.android.AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
     private var appliedDarkMode: Boolean? = true
+
+    /** Story to open from a notification or the widget: link to title. */
+    private var pendingLink by mutableStateOf<Pair<String, String>?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val splash = installSplashScreen()
@@ -42,13 +47,28 @@ class MainActivity : ComponentActivity() {
             statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT)
         )
+        pendingLink = linkFrom(intent)
         setContent {
             var introVisible by rememberSaveable { mutableStateOf(showIntro) }
             Box(modifier = Modifier.fillMaxSize()) {
-                SimantoApp(onDarkModeChanged = ::applySystemBarStyle)
+                SimantoApp(
+                    onDarkModeChanged = ::applySystemBarStyle,
+                    openLink = pendingLink,
+                    onOpenLinkHandled = { pendingLink = null }
+                )
                 if (introVisible) LaunchIntro(onFinished = { introVisible = false })
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        linkFrom(intent)?.let { pendingLink = it }
+    }
+
+    private fun linkFrom(intent: Intent?): Pair<String, String>? {
+        val link = intent?.getStringExtra(NewsAlerts.EXTRA_LINK) ?: return null
+        return link to intent.getStringExtra(NewsAlerts.EXTRA_TITLE).orEmpty()
     }
 
     /** Match status/navigation bar icon colours to the in-app theme toggle without re-creating window sync groups. */

@@ -19,7 +19,8 @@ class NewsWorker @AssistedInject constructor(
     @Assisted workerParams: WorkerParameters,
     private val newsRepository: NewsRepository,
     private val settingsRepository: SettingsRepository,
-    private val videoSync: VideoSync
+    private val videoSync: VideoSync,
+    private val newsAlerts: NewsAlerts
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result = try {
@@ -30,6 +31,8 @@ class NewsWorker @AssistedInject constructor(
             newsRepository.syncForBackground(settingsRepository.current().keywords)
             Log.d(TAG, "Background news sync finished")
         }
+        runCatching { newsAlerts.checkAndNotify() }
+        com.example.widget.BorderNewsWidget.refreshAll(applicationContext)
         // Videos too, so the video tab opens with fresh ones (skipped if the app just did it)
         Log.d(TAG, "Background video sync: ${videoSync.sync(minIntervalMillis = SKIP_IF_SYNCED_WITHIN_MILLIS)}")
         Result.success()

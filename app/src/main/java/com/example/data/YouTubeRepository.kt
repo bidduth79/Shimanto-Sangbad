@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -53,6 +54,12 @@ class YouTubeRepository @Inject constructor(
             Log.w("YouTubeRepository", msg)
         } catch (_: Throwable) {}
     }
+
+    /**
+     * At most this many YouTube requests at a time. ~150 channel feeds fired at once filled the
+     * shared HTTP client's queue and held back the news refresh.
+     */
+    private val networkSlots = kotlinx.coroutines.sync.Semaphore(6)
 
     // Maximum age for videos: 7 days (168 hours), while UI defaults to 48 hours filter
     private val maxVideoAgeMillis = 7L * 24L * 60L * 60L * 1000L
@@ -108,23 +115,23 @@ class YouTubeRepository @Inject constructor(
                 channels.forEach { channelId ->
                     launch {
                         deliver(
-                            fetchChannelUploadsViaApi(channelId, apiKey).map { snippet ->
+                            networkSlots.withPermit { fetchChannelUploadsViaApi(channelId, apiKey) }.map { snippet ->
                                 YouTubeSearchResult(id = YouTubeVideoId(videoId = snippet.resourceId?.videoId), snippet = snippet)
                             }
                         )
                     }
                 }
-                launch { deliver(fetchKeywordSearchViaApi(effectiveKeywords, apiKey)) }
+                launch { deliver(networkSlots.withPermit { fetchKeywordSearchViaApi(effectiveKeywords, apiKey) }) }
             }
 
             // Free sources run every time, API key or not: channel RSS feeds and the public search
             // page cost no quota and catch videos the API's 50-result pages leave out.
             channels.forEach { channelId ->
-                launch { deliver(fetchChannelRssVideos(channelId, effectiveKeywords)) }
+                launch { deliver(networkSlots.withPermit { fetchChannelRssVideos(channelId, effectiveKeywords) }) }
             }
             effectiveKeywords.take(8).forEach { kw ->
-                launch { deliver(fetchYouTubeDirectSearch(kw, "CAISBAgCEAE%3D")) } // today, newest first
-                launch { deliver(fetchYouTubeDirectSearch(kw, "CAI%3D")) }         // newest first (up to 7 days)
+                launch { deliver(networkSlots.withPermit { fetchYouTubeDirectSearch(kw, "CAISBAgCEAE%3D") }) } // today, newest first
+                launch { deliver(networkSlots.withPermit { fetchYouTubeDirectSearch(kw, "CAI%3D") }) }         // newest first (up to 7 days)
             }
         }
 
@@ -478,6 +485,8 @@ class YouTubeRepository @Inject constructor(
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
                 )
                 .header("Accept-Language", "en-US,en;q=0.9")
+                // Without a consent cookie YouTube bounces EU/unknown regions between consent pages
+                .header("Cookie", "SOCS=CAI; CONSENT=YES+cb")
                 .get()
                 .build()
 

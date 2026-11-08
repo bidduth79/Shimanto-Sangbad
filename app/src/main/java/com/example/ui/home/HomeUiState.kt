@@ -70,8 +70,10 @@ data class HomeUiState(
     val selection: HomeSelection = HomeSelection(),
     val tabCounts: TabCounts = TabCounts(),
     val filterCounts: FilterCounts = FilterCounts(),
-    /** The list to show for the current tab, filter and search. */
+    /** The list to show for the current tab, filter and search: one card per event. */
     val visibleArticles: List<NewsArticle> = emptyList(),
+    /** Other outlets' reports of the same event, by the shown card's link ("+N sources"). */
+    val relatedReports: Map<String, List<NewsArticle>> = emptyMap(),
     /** Publish times of every on-topic story (all tabs, no filters): for the "new" badge. */
     val allTimestamps: List<Long> = emptyList(),
     /** Top stories carousel; only on the unfiltered view. */
@@ -169,9 +171,13 @@ fun buildHomeState(
     } else filtered
 
     val query = selection.searchQuery.trim()
-    val visible = if (query.isBlank()) unreadOnly else unreadOnly.filter {
+    val matching = if (query.isBlank()) unreadOnly else unreadOnly.filter {
         it.title.contains(query, ignoreCase = true) || it.source.contains(query, ignoreCase = true)
     }
+    // Same event from several outlets: one card, the rest behind "+N sources"
+    val clusters = com.example.data.StoryClusters.cluster(matching)
+    val visible = clusters.map { it.lead }
+    val related = clusters.filter { it.others.isNotEmpty() }.associate { it.lead.link to it.others }
 
     return HomeUiState(
         isLoading = isRefreshing && regional.all.isEmpty(),
@@ -187,6 +193,7 @@ fun buildHomeState(
         ),
         filterCounts = counts,
         visibleArticles = visible,
+        relatedReports = related,
         heroArticles = if (selection.filter == HomeFilter.ALL && query.isBlank()) heroFrom(visible) else emptyList(),
         facebookNews = inputs.facebookNews,
         customFeedNews = inputs.customFeedNews,

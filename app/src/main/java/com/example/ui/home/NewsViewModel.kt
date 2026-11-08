@@ -34,6 +34,8 @@ import javax.inject.Inject
  */
 @HiltViewModel
 class NewsViewModel @Inject constructor(
+    private val newsAlerts: com.example.data.NewsAlerts,
+    @param:dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context,
     private val newsRepository: NewsRepository,
     private val settingsRepository: SettingsRepository,
     private val linkDecoder: GoogleNewsDecoder
@@ -120,6 +122,8 @@ class NewsViewModel @Inject constructor(
             } finally {
                 isRefreshing.value = false
             }
+            runCatching { newsAlerts.checkAndNotify() }
+            com.example.widget.BorderNewsWidget.refreshAll(appContext)
             preResolveTopLinks()
             newsRepository.fillMissingImages()
         }

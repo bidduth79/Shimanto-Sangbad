@@ -51,7 +51,9 @@ fun NewsCard(
     onSpeakClick: (NewsArticle) -> Unit = {},
     onCopyClick: (NewsArticle) -> Unit,
     onWhatsAppClick: (NewsArticle) -> Unit,
-    onBookmarkClick: (NewsArticle) -> Unit = {}
+    onBookmarkClick: (NewsArticle) -> Unit = {},
+    relatedCount: Int = 0,
+    onRelatedClick: () -> Unit = {}
 ) {
     val scheme = MaterialTheme.colorScheme
     val accentColor = GlowColors[Math.abs(article.title.hashCode()) % GlowColors.size]
@@ -72,6 +74,7 @@ fun NewsCard(
             .clip(cardShape)
             .background(scheme.surface)
             .translucentCircles(accentColor, seed = article.title.hashCode(), isDark = isDark, parallax = parallax)
+            .borderLineArt(isDark)
             .border(
                 width = if (isSpeaking) 1.5.dp else 1.dp,
                 color = when {
@@ -155,15 +158,17 @@ fun NewsCard(
             modifier = Modifier.padding(end = 8.dp),
             verticalAlignment = Alignment.Top
         ) {
-            Text(
-                text = article.title,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Bold,
-                color = titleColor,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = article.title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = titleColor,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+                TranslatedLine(article.title, modifier = Modifier.padding(top = 4.dp))
+            }
 
             if (!article.imageUrl.isNullOrBlank()) {
                 Spacer(modifier = Modifier.width(12.dp))
@@ -193,6 +198,26 @@ fun NewsCard(
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(text = stringResource(R.string.news_read), color = visitedColor(scheme), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold)
+            }
+            if (relatedCount > 0) {
+                if (isVisited) Spacer(modifier = Modifier.width(8.dp))
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(scheme.primary.copy(alpha = 0.12f))
+                        .clickable(onClick = onRelatedClick)
+                        .padding(horizontal = 9.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Layers, contentDescription = null, tint = scheme.primary, modifier = Modifier.size(13.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = stringResource(R.string.news_more_sources, bengaliDigits(relatedCount)),
+                        color = scheme.primary,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
             Spacer(modifier = Modifier.weight(1f))
             // Audio Listen (TTS) Button

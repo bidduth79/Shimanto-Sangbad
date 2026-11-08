@@ -39,7 +39,12 @@ data class UserSettings(
     val showNewBadges: Boolean = true,
     /** When the home / video tab was last looked at (epoch millis; 0 = never). */
     val lastSeenHomeAt: Long = 0L,
-    val lastSeenVideoAt: Long = 0L
+    val lastSeenVideoAt: Long = 0L,
+    /** Breaking-news notifications and the words that trigger them. */
+    val alertsEnabled: Boolean = true,
+    /** Bengali translations under Hindi/English headlines (on the phone, ML Kit). */
+    val translateHeadlines: Boolean = true,
+    val alertKeywords: List<String> = com.example.data.NewsAlerts.DEFAULT_ALERT_KEYWORDS
 )
 
 /**
@@ -65,7 +70,10 @@ class SettingsRepository @Inject constructor(
             isDarkMode = prefs[DARK_MODE] ?: true,
             showNewBadges = prefs[SHOW_NEW_BADGES] ?: true,
             lastSeenHomeAt = prefs[LAST_SEEN_HOME] ?: 0L,
-            lastSeenVideoAt = prefs[LAST_SEEN_VIDEO] ?: 0L
+            lastSeenVideoAt = prefs[LAST_SEEN_VIDEO] ?: 0L,
+            alertsEnabled = prefs[ALERTS_ENABLED] ?: true,
+            translateHeadlines = prefs[TRANSLATE_HEADLINES] ?: true,
+            alertKeywords = prefs[ALERT_KEYWORDS]?.toList()?.sorted() ?: com.example.data.NewsAlerts.DEFAULT_ALERT_KEYWORDS
         )
     }.distinctUntilChanged()
 
@@ -140,6 +148,54 @@ class SettingsRepository @Inject constructor(
         store.edit { it[LAST_SEEN_VIDEO] = at }
     }
 
+    /** Switching alerts on starts unprimed, so stories already there are not announced. */
+    suspend fun setAlertsEnabled(enabled: Boolean) {
+        store.edit {
+            it[ALERTS_ENABLED] = enabled
+            if (enabled) it[ALERTS_PRIMED] = false
+        }
+    }
+
+    suspend fun setTranslateHeadlines(enabled: Boolean) {
+        store.edit { it[TRANSLATE_HEADLINES] = enabled }
+    }
+
+    suspend fun addAlertKeyword(keyword: String) {
+        val clean = keyword.trim()
+        if (clean.isBlank()) return
+        store.edit { prefs ->
+            val current = prefs[ALERT_KEYWORDS] ?: com.example.data.NewsAlerts.DEFAULT_ALERT_KEYWORDS.toSet()
+            prefs[ALERT_KEYWORDS] = current + clean
+        }
+    }
+
+    suspend fun removeAlertKeyword(keyword: String) {
+        store.edit { prefs ->
+            val current = prefs[ALERT_KEYWORDS] ?: com.example.data.NewsAlerts.DEFAULT_ALERT_KEYWORDS.toSet()
+            prefs[ALERT_KEYWORDS] = current - keyword
+        }
+    }
+
+    suspend fun alertsPrimed(): Boolean = store.data.first()[ALERTS_PRIMED] ?: false
+
+    /** Links already announced, so each story alerts once. */
+    suspend fun notifiedLinks(): Set<String> = store.data.first()[NOTIFIED_LINKS].orEmpty()
+
+    suspend fun addNotifiedLinks(links: List<String>, primed: Boolean) {
+        store.edit { prefs ->
+            val all = (prefs[NOTIFIED_LINKS].orEmpty() + links)
+            prefs[NOTIFIED_LINKS] = if (all.size > MAX_NOTIFIED) all.toList().takeLast(MAX_NOTIFIED).toSet() else all
+            prefs[ALERTS_PRIMED] = primed
+        }
+    }
+
+    /** Whether the Android 13+ notification permission was already asked for once. */
+    suspend fun notificationPermissionAsked(): Boolean = store.data.first()[NOTIFICATION_ASKED] ?: false
+
+    suspend fun setNotificationPermissionAsked() {
+        store.edit { it[NOTIFICATION_ASKED] = true }
+    }
+
     /** When news was last fully refreshed (epoch millis), so a quick re-open doesn't refetch everything. */
     suspend fun lastSyncAt(): Long = store.data.first()[LAST_SYNC_AT] ?: 0L
 
@@ -189,6 +245,13 @@ class SettingsRepository @Inject constructor(
         internal val SHOW_NEW_BADGES = booleanPreferencesKey("show_new_badges")
         internal val LAST_SEEN_HOME = longPreferencesKey("last_seen_home_at")
         internal val LAST_SEEN_VIDEO = longPreferencesKey("last_seen_video_at")
+        internal val ALERTS_ENABLED = booleanPreferencesKey("alerts_enabled")
+        internal val TRANSLATE_HEADLINES = booleanPreferencesKey("translate_headlines")
+        internal val ALERT_KEYWORDS = stringSetPreferencesKey("alert_keywords")
+        internal val ALERTS_PRIMED = booleanPreferencesKey("alerts_primed")
+        internal val NOTIFIED_LINKS = stringSetPreferencesKey("notified_links")
+        internal val NOTIFICATION_ASKED = booleanPreferencesKey("notification_permission_asked")
+        private const val MAX_NOTIFIED = 400
 
         internal const val LEGACY_PREFS = "keywords_prefs"
         internal const val LEGACY_SECRET_PREFS = "secret_prefs"

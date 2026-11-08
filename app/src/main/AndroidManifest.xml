@@ -3,6 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
         android:name=".SimantoApplication"
         android:allowBackup="true"
@@ -16,6 +17,7 @@
         android:theme="@style/Theme.MyApplication" android:windowSoftInputMode="adjustResize">
         <activity
             android:name=".MainActivity"
+            android:launchMode="singleTop"
             android:exported="true"
             android:label="@string/app_name"
             android:theme="@style/Theme.App.Starting" android:windowSoftInputMode="adjustResize">
@@ -25,6 +27,19 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Home-screen widget: latest border headlines -->
+        <receiver
+            android:name=".widget.BorderNewsWidgetReceiver"
+            android:exported="false"
+            android:label="@string/widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/border_news_widget_info" />
+        </receiver>
 
         <!-- WorkManager is initialised on demand by SimantoApplication (Hilt worker factory) -->
         <provider

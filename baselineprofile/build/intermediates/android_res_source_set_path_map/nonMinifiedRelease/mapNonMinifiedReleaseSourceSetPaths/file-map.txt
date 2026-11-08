@@ -1,0 +1,8 @@
+com.example.baselineprofile-pngs-0 D:\website\Shimanto-Sangbad\baselineprofile\build\generated\res\pngs\nonMinifiedRelease
+com.example.baselineprofile-updated_navigation_xml-1 D:\website\Shimanto-Sangbad\baselineprofile\build\generated\updated_navigation_xml\nonMinifiedRelease
+com.example.baselineprofile-packageNonMinifiedReleaseResources-2 D:\website\Shimanto-Sangbad\baselineprofile\build\intermediates\incremental\nonMinifiedRelease\packageNonMinifiedReleaseResources\merged.dir
+com.example.baselineprofile-packageNonMinifiedReleaseResources-3 D:\website\Shimanto-Sangbad\baselineprofile\build\intermediates\incremental\nonMinifiedRelease\packageNonMinifiedReleaseResources\stripped.dir
+com.example.baselineprofile-nonMinifiedRelease-4 D:\website\Shimanto-Sangbad\baselineprofile\build\intermediates\merged_res\nonMinifiedRelease\mergeNonMinifiedReleaseResources
+com.example.baselineprofile-main-5 D:\website\Shimanto-Sangbad\baselineprofile\src\main\res
+com.example.baselineprofile-nonMinifiedRelease-6 D:\website\Shimanto-Sangbad\baselineprofile\src\nonMinifiedRelease\res
+gradleHome-0 C:\Users\USER\.gradle

@@ -43,11 +43,26 @@ fun NewsListWithRefresh(
     onSpeakClick: (NewsArticle) -> Unit = {},
     onCopyClick: (NewsArticle) -> Unit,
     onWhatsAppClick: (NewsArticle) -> Unit,
-    onBookmarkClick: (NewsArticle) -> Unit = {}
+    onBookmarkClick: (NewsArticle) -> Unit = {},
+    relatedReports: Map<String, List<NewsArticle>> = emptyMap()
 ) {
+    var sourcesOf by remember { mutableStateOf<NewsArticle?>(null) }
+    sourcesOf?.let { lead ->
+        RelatedSourcesSheet(
+            lead = lead,
+            others = relatedReports[lead.link].orEmpty(),
+            visitedLinks = visitedLinks,
+            onOpen = { article ->
+                sourcesOf = null
+                onArticleClick(article)
+            },
+            onDismiss = { sourcesOf = null }
+        )
+    }
     var visibleLimit by remember { mutableIntStateOf(30) }
     val scheme = MaterialTheme.colorScheme
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    ScrollToTopOnReselect(listState)
     val reducedMotion = rememberReducedMotion()
 
     LaunchedEffect(articles) {
@@ -90,7 +105,7 @@ fun NewsListWithRefresh(
                         .fillMaxSize()
                         .padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(top = 6.dp, bottom = 84.dp)
+                    contentPadding = PaddingValues(top = 6.dp, bottom = LocalBottomBarSpace.current + 12.dp)
                 ) {
                     if (heroArticles.isNotEmpty()) {
                         item(key = "hero_carousel") {
@@ -121,7 +136,9 @@ fun NewsListWithRefresh(
                             onSpeakClick = onSpeakClick,
                             onCopyClick = onCopyClick,
                             onWhatsAppClick = onWhatsAppClick,
-                            onBookmarkClick = onBookmarkClick
+                            onBookmarkClick = onBookmarkClick,
+                            relatedCount = relatedReports[article.link]?.size ?: 0,
+                            onRelatedClick = { sourcesOf = article }
                         )
                     }
 
@@ -158,7 +175,7 @@ fun NewsListWithRefresh(
                         },
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
-                            .padding(end = 16.dp, bottom = 14.dp)
+                            .padding(end = 16.dp, bottom = LocalBottomBarSpace.current + 14.dp)
                     )
                 }
             }

@@ -26,6 +26,10 @@ interface NewsDao {
     fun observeByCategories(categories: List<String>, since: Long, limit: Int = MAX_ROWS): Flow<List<NewsArticle>>
 
     @Transaction
+    /** Newest stories published after [since] (for breaking-news alerts and the widget). */
+    @Query("SELECT * FROM news_articles WHERE timestamp >= :since ORDER BY timestamp DESC LIMIT 300")
+    suspend fun getRecent(since: Long): List<NewsArticle>
+
     @Query("SELECT * FROM news_articles WHERE isSaved = 1 ORDER BY timestamp DESC")
     fun observeSaved(): Flow<List<NewsArticle>>
 
