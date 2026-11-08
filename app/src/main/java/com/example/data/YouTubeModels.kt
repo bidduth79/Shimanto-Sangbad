@@ -4,7 +4,8 @@ import com.squareup.moshi.JsonClass
 
 @JsonClass(generateAdapter = true)
 data class YouTubeSearchResponse(
-    val items: List<YouTubeSearchResult> = emptyList()
+    val items: List<YouTubeSearchResult> = emptyList(),
+    val nextPageToken: String? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -26,6 +27,12 @@ data class YouTubeSnippet(
     val title: String? = null,
     val description: String? = null,
     val channelTitle: String? = null,
+    /** Uploader's channel; used to tell newspaper/TV channels from local uploaders. */
+    val channelId: String? = null,
+    /** Country the channel declares on YouTube ("BD", "IN"…); filled in by the app, not by search. */
+    val channelCountry: String? = null,
+    /** True for web-search results, whose time comes from "3 hours ago" text. */
+    val timeIsEstimate: Boolean = false,
     val publishedAt: String? = null,
     val thumbnails: YouTubeThumbnails? = null,
     val resourceId: YouTubeResourceId? = null
@@ -65,7 +72,14 @@ data class YouTubeChannelResponse(
 
 @JsonClass(generateAdapter = true)
 data class YouTubeChannelItem(
-    val contentDetails: YouTubeChannelContentDetails? = null
+    val id: String? = null,
+    val contentDetails: YouTubeChannelContentDetails? = null,
+    val snippet: YouTubeChannelSnippet? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class YouTubeChannelSnippet(
+    val country: String? = null
 )
 
 @JsonClass(generateAdapter = true)

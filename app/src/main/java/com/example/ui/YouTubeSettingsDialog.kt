@@ -1,5 +1,7 @@
 package com.example.ui
 
+import com.example.R
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -70,14 +72,14 @@ fun YouTubeSettingsDialog(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
-                                text = "ইউটিউব সেটিংস",
-                                fontSize = 18.sp,
+                                text = stringResource(R.string.yt_dialog_title),
+                                style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = OnBackground
                             )
                             Text(
-                                text = "এপিআই কি ও চ্যানেল আইডি",
-                                fontSize = 12.sp,
+                                text = stringResource(R.string.yt_dialog_subtitle),
+                                style = MaterialTheme.typography.labelLarge,
                                 color = Outline
                             )
                         }
@@ -85,7 +87,7 @@ fun YouTubeSettingsDialog(
                     IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
                         Icon(
                             imageVector = Icons.Default.Close,
-                            contentDescription = "বন্ধ করুন",
+                            contentDescription = stringResource(R.string.action_close),
                             tint = OnBackground
                         )
                     }
@@ -97,8 +99,8 @@ fun YouTubeSettingsDialog(
 
                 // API Key Field
                 Text(
-                    text = "🔑 ইউটিউব এপিআই কি (API Key)",
-                    fontSize = 14.sp,
+                    text = stringResource(R.string.yt_api_key_label),
+                    style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = OnBackground
                 )
@@ -123,8 +125,8 @@ fun YouTubeSettingsDialog(
 
                 // Channel ID Field
                 Text(
-                    text = "📺 ইউটিউব চ্যানেল আইডি (Channel ID)",
-                    fontSize = 14.sp,
+                    text = stringResource(R.string.yt_channel_label),
+                    style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = OnBackground
                 )
@@ -157,7 +159,7 @@ fun YouTubeSettingsDialog(
                         onClick = onDismiss,
                         shape = RoundedCornerShape(16.dp)
                     ) {
-                        Text("বাতিল", fontSize = 13.sp)
+                        Text(stringResource(R.string.action_cancel), style = MaterialTheme.typography.bodyMedium)
                     }
                     Spacer(modifier = Modifier.width(10.dp))
                     Button(
@@ -174,7 +176,7 @@ fun YouTubeSettingsDialog(
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("সংরক্ষণ করুন", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.action_save), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
                     }
                 }
             }

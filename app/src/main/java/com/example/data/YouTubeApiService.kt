@@ -13,6 +13,8 @@ interface YouTubeApiService {
         @Query("order") order: String = "date",
         @Query("channelId") channelId: String? = null,
         @Query("publishedAfter") publishedAfter: String? = null,
+        @Query("pageToken") pageToken: String? = null,
+        @Query("regionCode") regionCode: String? = null,
         @Query("key") apiKey: String
     ): YouTubeSearchResponse
 
@@ -28,6 +30,7 @@ interface YouTubeApiService {
     suspend fun getChannels(
         @Query("part") part: String = "contentDetails",
         @Query("id") channelId: String,
+        @Query("maxResults") maxResults: Int? = null,
         @Query("key") apiKey: String
     ): YouTubeChannelResponse
 }

@@ -2,79 +2,44 @@ package com.example.data
 
 import android.content.Context
 import android.util.Log
+import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.example.data.local.NewsDatabase
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.supervisorScope
+import com.example.data.settings.SettingsRepository
+import dagger.assisted.Assisted
+import dagger.assisted.AssistedInject
 
-private fun isBengali(text: String): Boolean {
-    return text.any { it in 'ঀ'..'৿' }
-}
+/**
+ * Periodic background refresh so the app opens with recent news already cached.
+ * Class name and package are kept stable: WorkManager stores them for already-scheduled work.
+ */
+@HiltWorker
+class NewsWorker @AssistedInject constructor(
+    @Assisted appContext: Context,
+    @Assisted workerParams: WorkerParameters,
+    private val newsRepository: NewsRepository,
+    private val settingsRepository: SettingsRepository,
+    private val videoSync: VideoSync
+) : CoroutineWorker(appContext, workerParams) {
 
-class NewsWorker(appContext: Context, workerParams: WorkerParameters) : CoroutineWorker(appContext, workerParams) {
-    override suspend fun doWork(): Result {
-        val repository = NewsRepository()
-        val keywordPrefs = KeywordPreferences(applicationContext)
-        val database = NewsDatabase.getDatabase(applicationContext)
-
-        return try {
-            val maxAgeMillis = 36L * 60 * 60 * 1000L
-            val now = System.currentTimeMillis()
-            database.newsDao().deleteOldNews(now - maxAgeMillis)
-
-            val keywords = keywordPrefs.getKeywords()
-            val socialExclusions = "-site:facebook.com -site:fb.com"
-
-            val bgbArticles = supervisorScope {
-                keywords.map { keyword ->
-                    async(Dispatchers.IO) {
-                        if (isBengali(keyword)) {
-                            repository.fetchNews("$keyword $socialExclusions", hl = "bn", gl = "BD", ceid = "BD:bn", whenWindow = "1d")
-                                .map { it.copy(matchedKeyword = keyword) }
-                        } else {
-                            repository.fetchNews("$keyword $socialExclusions", hl = "en-BD", gl = "BD", ceid = "BD:en", whenWindow = "1d")
-                                .map { it.copy(matchedKeyword = keyword) }
-                        }
-                    }
-                }.awaitAll().flatten()
-            }
-
-            val fbArticles = supervisorScope {
-                keywords.map { keyword ->
-                    async(Dispatchers.IO) {
-                        repository.fetchFacebookNews(keyword)
-                    }
-                }.awaitAll().flatten()
-            }
-
-            val savedLinks = database.newsDao().getSavedNews().map { it.link }.toSet()
-            val updatedBgb = bgbArticles
-                .filter { it.timestamp > 0L && (now - it.timestamp) in -600_000L..maxAgeMillis }
-                .distinctBy { it.link }
-                .sortedByDescending { it.timestamp }
-                .map { it.copy(category = "bgb", isSaved = savedLinks.contains(it.link)) }
-
-            val updatedFb = fbArticles
-                .filter { it.timestamp > 0L && (now - it.timestamp) in -600_000L..maxAgeMillis }
-                .distinctBy { it.link }
-                .sortedByDescending { it.timestamp }
-                .map { it.copy(category = "facebook", isSaved = savedLinks.contains(it.link)) }
-
-            if (updatedBgb.isNotEmpty()) {
-                database.newsDao().insertAll(updatedBgb)
-            }
-            if (updatedFb.isNotEmpty()) {
-                database.newsDao().insertAll(updatedFb)
-            }
-
-            Log.d("NewsWorker", "Successfully fetched and cached ${updatedBgb.size} background news items")
-            Result.success()
-        } catch (e: Exception) {
-            Log.e("NewsWorker", "Error updating news", e)
-            Result.retry()
+    override suspend fun doWork(): Result = try {
+        // The open app refreshes on its own; don't compete with it for network and CPU
+        if (System.currentTimeMillis() - settingsRepository.lastSyncAt() < SKIP_IF_SYNCED_WITHIN_MILLIS) {
+            Log.d(TAG, "Skipped: app refreshed recently")
+        } else {
+            newsRepository.syncForBackground(settingsRepository.current().keywords)
+            Log.d(TAG, "Background news sync finished")
         }
+        // Videos too, so the video tab opens with fresh ones (skipped if the app just did it)
+        Log.d(TAG, "Background video sync: ${videoSync.sync(minIntervalMillis = SKIP_IF_SYNCED_WITHIN_MILLIS)}")
+        Result.success()
+    } catch (e: Exception) {
+        Log.e(TAG, "Background news sync failed", e)
+        Result.retry()
+    }
+
+    private companion object {
+        const val TAG = "NewsWorker"
+        const val SKIP_IF_SYNCED_WITHIN_MILLIS = 15L * 60 * 1000
     }
 }

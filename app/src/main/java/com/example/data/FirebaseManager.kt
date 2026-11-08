@@ -1,14 +1,27 @@
 package com.example.data
 
 import android.content.Context
-import android.content.SharedPreferences
 import android.util.Log
 import android.provider.Settings
 import com.google.firebase.firestore.FirebaseFirestore
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.tasks.await
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class FirebaseManager(private val context: Context) {
-    private val firestore = FirebaseFirestore.getInstance()
+/**
+ * Backs up bookmarks to Firestore, keyed by device. Does nothing (instead of crashing) when the
+ * project has no Firebase configuration (google-services.json), which is the case today.
+ */
+@Singleton
+class FirebaseManager @Inject constructor(
+    @param:ApplicationContext private val context: Context
+) {
+    private val firestore: FirebaseFirestore? by lazy {
+        runCatching { FirebaseFirestore.getInstance() }
+            .onFailure { Log.w("FirebaseManager", "Firebase not configured; cloud backup disabled") }
+            .getOrNull()
+    }
 
     private val deviceId: String
         get() = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: "unknown_device"
@@ -16,7 +29,8 @@ class FirebaseManager(private val context: Context) {
 
     suspend fun syncSavedNews(article: NewsArticle, isSaved: Boolean) {
         try {
-            val documentRef = firestore.collection("users")
+            val db = firestore ?: return
+            val documentRef = db.collection("users")
                 .document(deviceId)
                 .collection("saved_news")
                 // Encode the link to avoid invalid document paths
@@ -48,24 +62,10 @@ class FirebaseManager(private val context: Context) {
         }
     }
 
-    suspend fun getSavedNewsLinks(): List<String> {
-        return try {
-            val snapshot = firestore.collection("users")
-                .document(deviceId)
-                .collection("saved_news")
-                .get()
-                .await()
-            
-            snapshot.documents.mapNotNull { it.getString("link") }
-        } catch (e: Exception) {
-            Log.e("FirebaseManager", "Error fetching saved links", e)
-            emptyList()
-        }
-    }
-
     suspend fun restoreSavedNews(): List<NewsArticle> {
+        val db = firestore ?: return emptyList()
         return try {
-            val snapshot = firestore.collection("users")
+            val snapshot = db.collection("users")
                 .document(deviceId)
                 .collection("saved_news")
                 .get()

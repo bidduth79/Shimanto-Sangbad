@@ -19,3 +19,9 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Keep readable stack traces in crash reports.
+-keepattributes SourceFile,LineNumberTable
+
+# Data models are serialized by Moshi / Room / Firestore; keep their fields intact.
+-keep class com.example.data.** { <fields>; <init>(...); }

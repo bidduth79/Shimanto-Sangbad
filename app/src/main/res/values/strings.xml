@@ -1,3 +1,217 @@
 <resources>
     <string name="app_name">সীমান্ত সংবাদ</string>
+
+    <!-- Launch intro -->
+    <string name="splash_tagline">সীমান্তের অতন্দ্র প্রহরী</string>
+
+    <!-- Common actions -->
+    <string name="action_add">যোগ করুন</string>
+    <string name="action_cancel">বাতিল</string>
+    <string name="action_save">সংরক্ষণ করুন</string>
+    <string name="action_close">বন্ধ করুন</string>
+    <string name="action_retry">পুনরায় চেষ্টা করুন</string>
+    <string name="action_remove">সরান</string>
+    <string name="action_expand">প্রসারিত করুন</string>
+    <string name="action_collapse">সংকুচিত করুন</string>
+    <string name="action_share">শেয়ার</string>
+    <string name="action_share_to">শেয়ার করুন</string>
+    <string name="action_copy">কপি</string>
+    <string name="action_copy_link">লিংক কপি করুন</string>
+    <string name="action_reload">পুনরায় লোড করুন</string>
+    <string name="action_open_in_browser">ব্রাউজারে খুলুন</string>
+    <string name="unknown_error">অজানা ত্রুটি</string>
+
+    <!-- Bottom navigation -->
+    <string name="nav_home">হোম</string>
+    <string name="nav_video">ভিডিও</string>
+    <string name="nav_rss">আরএসএস</string>
+    <string name="nav_live">লাইভ</string>
+    <string name="nav_saved">বুকমার্ক</string>
+    <string name="nav_settings">সেটিংস</string>
+
+    <!-- Toasts and system messages -->
+    <string name="toast_youtube_settings_saved">ইউটিউব সেটিংস সংরক্ষিত হয়েছে!</string>
+    <string name="toast_rss_added">✅ আরএসএস ফিড যুক্ত করা হয়েছে!</string>
+    <string name="toast_rss_removed">আরএসএস ফিড সরানো হয়েছে</string>
+    <string name="toast_cache_cleared">✨ ক্যাশ ও পুরনো ডাটা সফলভাবে পরিষ্কার করা হয়েছে!</string>
+    <string name="toast_news_link_copied">✅ খবরের মূল লিংক কপি করা হয়েছে</string>
+    <string name="toast_link_copied">✅ লিংক কপি করা হয়েছে!</string>
+    <string name="toast_video_link_copied">✅ ভিডিও লিংক কপি করা হয়েছে!</string>
+    <string name="toast_bookmark_saved">সংবাদটি সংরক্ষিত হয়েছে</string>
+    <string name="toast_bookmark_removed">সংরক্ষিত তালিকা থেকে সরানো হয়েছে</string>
+    <string name="toast_reading_aloud">🔊 সংবাদটি পড়ে শোনানো হচ্ছে...</string>
+    <string name="toast_whatsapp_missing">আপনার ফোনে WhatsApp ইনস্টল করা নেই</string>
+    <string name="tts_article">%1$s জানাচ্ছে: %2$s</string>
+
+    <!-- Header -->
+    <string name="header_back">ফিরে যান</string>
+    <string name="header_search_hint">খবর খুঁজুন...</string>
+    <string name="header_clear">মুছুন</string>
+    <string name="header_search">খুঁজুন</string>
+    <string name="header_light_mode">লাইট মোড</string>
+    <string name="header_dark_mode">ডার্ক মোড</string>
+    <string name="header_keywords">কীওয়ার্ড</string>
+    <string name="header_all_news">সকল নিউজ</string>
+    <string name="keyword_menu_title">কীওয়ার্ড ফিল্টার</string>
+    <string name="keyword_menu_subtitle">কোন বিষয়ের খবর দেখবেন বেছে নিন</string>
+    <string name="header_more">আরও</string>
+    <string name="header_refresh">রিফ্রেশ করুন</string>
+    <string name="header_hide_filters">ফিল্টার লুকান</string>
+    <string name="header_show_filters">ফিল্টার দেখান</string>
+    <string name="header_youtube_settings">ইউটিউব সেটিংস</string>
+
+    <!-- Home: country tabs and filter chips -->
+    <string name="tab_all">সকল</string>
+    <string name="tab_bangladesh">বাংলাদেশ</string>
+    <string name="tab_india">ভারত</string>
+    <string name="tab_myanmar">মায়ানমার</string>
+    <string name="tab_international">আন্তর্জাতিক</string>
+    <string name="filter_with_count">%1$s (%2$d)</string>
+    <string name="filter_all">সকল</string>
+    <string name="filter_unread">অপঠিত</string>
+    <string name="filter_read">পঠিত</string>
+    <string name="filter_newspaper">পত্রিকা</string>
+    <string name="filter_facebook">ফেসবুক</string>
+
+    <!-- News list and cards -->
+    <string name="top_story">শীর্ষ সংবাদ</string>
+    <string name="news_empty_title">কোনো সংবাদ পাওয়া যায়নি</string>
+    <string name="news_empty_hint">অন্য ফিল্টার নির্বাচন করুন বা রিফ্রেশ করুন</string>
+    <string name="news_read">পঠিত</string>
+    <string name="news_listen">শুনুন</string>
+    <string name="news_share_whatsapp">হোয়াটসঅ্যাপে শেয়ার</string>
+    <string name="news_copy_link">লিংক কপি</string>
+    <string name="news_bookmark">সংরক্ষণ</string>
+    <string name="jump_middle">মাঝখানে যান</string>
+    <string name="jump_top">উপরে যান</string>
+    <string name="jump_bottom">নিচে যান</string>
+    <string name="jump_top_direct">সরাসরি উপরে যান</string>
+
+    <string name="video_loading_first">ভিডিও আনা হচ্ছে… প্রথমবার কয়েক সেকেন্ড লাগবে</string>
+    <string name="video_refreshing">নতুন ভিডিও আনা হচ্ছে…</string>
+
+    <!-- Video filter chips -->
+    <string name="video_kind_tv">টিভি চ্যানেল</string>
+    <string name="video_kind_national">জাতীয় নিউজ</string>
+    <string name="video_kind_local">লোকাল নিউজ</string>
+    <string name="video_kind_other">অন্যান্য</string>
+    <string name="video_only_unwatched">শুধু অদেখা</string>
+    <string name="filter_only_unread">শুধু অপঠিত</string>
+    <string name="video_filter_media">পত্রিকা ও টিভি</string>
+    <string name="video_filter_local">লোকাল ও অন্যান্য</string>
+    <string name="video_filter_unwatched">অদেখা</string>
+    <string name="video_filter_watched">দেখা হয়েছে</string>
+
+    <!-- Time filter -->
+    <string name="time_filter_label">সময়</string>
+    <string name="time_filter_hours">%1$s ঘণ্টা</string>
+    <string name="time_filter_last_hours">গত %1$s ঘণ্টা</string>
+    <string name="time_filter_all">সব খবর (৩৬ ঘণ্টা)</string>
+    <string name="time_menu_title">সময় অনুযায়ী ফিল্টার</string>
+    <string name="time_menu_subtitle">কত সময়ের মধ্যের খবর দেখবেন</string>
+
+    <!-- Saved -->
+    <string name="saved_title">সংরক্ষিত সংবাদ (Bookmarks)</string>
+    <string name="saved_subtitle">আপনার সেভ করা গুরুত্বপূর্ণ সংবাদসমূহ</string>
+    <string name="saved_count">%1$dটি সেভ করা</string>
+    <string name="saved_empty_title">কোনো সংরক্ষিত সংবাদ নেই</string>
+    <string name="saved_empty_hint">যেকোনো সংবাদের বুকমার্ক আইকনে ট্যাপ করে এখানে সেভ করে রাখুন</string>
+
+    <!-- RSS -->
+    <string name="rss_title">আরএসএস ফিড</string>
+    <string name="rss_summary">%1$dটি ফিড • %2$dটি সংবাদ</string>
+    <string name="rss_add_feed">ফিড যোগ</string>
+    <string name="rss_add_new_title">নতুন আরএসএস (RSS) ফিড যোগ করুন</string>
+    <string name="rss_name_hint">ফিডের নাম (ঐচ্ছিক, যেমন: BBC Bangla)</string>
+    <string name="rss_url_hint">RSS লিংক (https://.../rss.xml)</string>
+    <string name="rss_popular_title">জনপ্রিয় ফিড এক ক্লিকে যোগ করুন:</string>
+    <string name="rss_filter_all">সকল ফিড</string>
+    <string name="rss_filter_keywords">কিওয়ার্ড ম্যাচিং</string>
+    <string name="rss_empty_title">এখনো কোনো আরএসএস ফিড যোগ করা হয়নি</string>
+    <string name="rss_empty_hint">উপরের বক্স থেকে অথবা সেটিংস থেকে যেকোনো আরএসএস ফিড যোগ করলে সেই নিউজগুলো এখানে চলে আসবে</string>
+    <string name="rss_open_settings">সেটিংস থেকে আরএসএস যোগ করুন</string>
+
+    <!-- Video -->
+    <string name="video_error_title">ভিডিও লোড হয়নি</string>
+    <string name="video_error_no_results">সাম্প্রতিক সময়ে আপনার কীওয়ার্ড অনুযায়ী কোনো নতুন ভিডিও পাওয়া যায়নি। রিফ্রেশ করে আবার চেষ্টা করুন।</string>
+    <string name="video_error_load_failed">ভিডিও লোড করতে সমস্যা হয়েছে: %1$s</string>
+    <string name="video_empty">কোনো ভিডিও পাওয়া যায়নি।</string>
+    <string name="video_empty_in_range">নির্বাচিত সময়ে কোনো নতুন ভিডিও পাওয়া যায়নি।</string>
+    <string name="video_untitled">শিরোনামহীন ভিডিও</string>
+    <string name="video_default_title">ইউটিউব ভিডিও</string>
+    <string name="video_play">প্লে</string>
+    <string name="video_time">সময়</string>
+    <string name="video_youtube">ইউটিউব</string>
+    <string name="video_youtube_app">ইউটিউব অ্যাপ</string>
+    <string name="player_title">ইন-অ্যাপ ভিডিও প্লেয়ার</string>
+    <string name="player_mode_direct">মোড: ডাইরেক্ট প্লেয়ার</string>
+    <string name="player_mode_embed">মোড: স্মার্ট এমবেড প্লেয়ার</string>
+    <string name="player_switch_to_embed">এমবেড মোড</string>
+    <string name="player_switch_to_direct">ডাইরেক্ট মোড</string>
+    <string name="time_just_now">সদ্যপ্রাপ্ত</string>
+    <string name="time_minutes_ago">%1$s মিনিট আগে</string>
+    <string name="time_hours_ago">%1$s ঘণ্টা আগে</string>
+    <string name="time_days_ago">%1$s দিন আগে</string>
+
+    <!-- YouTube settings dialog -->
+    <string name="yt_dialog_title">ইউটিউব সেটিংস</string>
+    <string name="yt_dialog_subtitle">এপিআই কি ও চ্যানেল আইডি</string>
+    <string name="yt_api_key_label">🔑 ইউটিউব এপিআই কি (API Key)</string>
+    <string name="yt_channel_label">📺 ইউটিউব চ্যানেল আইডি (Channel ID)</string>
+
+    <!-- Live search -->
+    <string name="live_title">লাইভ সার্চ</string>
+    <string name="live_today">আজকের তারিখ: %1$s</string>
+    <string name="live_post_count">%1$dটি পোস্ট</string>
+    <string name="live_search_hint">যেকোনো বিষয় লিখে ফেসবুক/ইউটিউবে খুঁজুন...</string>
+    <string name="live_engine_facebook">ফেসবুক</string>
+    <string name="live_engine_youtube">ইউটিউব</string>
+    <string name="live_engine_google">গুগল নিউজ</string>
+    <string name="live_engine_bing">বিং নিউজ</string>
+    <string name="live_engine_yahoo">ইয়াহু নিউজ</string>
+    <string name="live_engine_duckduckgo">ডাকডাকগো নিউজ</string>
+    <string name="live_tab_social">সোশ্যাল ফিড (%1$d)</string>
+    <string name="live_tab_keywords">কীওয়ার্ড কুইক সার্চ (%1$d)</string>
+    <string name="live_social_empty_title">সোশ্যাল ফিড লোড হচ্ছে বা কোনো পোস্ট পাওয়া যায়নি</string>
+    <string name="live_social_empty_hint">উপরের \'ফেসবুক\' বাটনে ট্যাপ করে সরাসরি লাইভ ফেসবুক পোস্ট দেখুন</string>
+    <string name="live_no_keywords">কোনো কীওয়ার্ড সেভ করা নেই। সেটিংস থেকে যোগ করুন।</string>
+    <string name="live_social_tag">সোশ্যাল ফিড</string>
+    <string name="reader_default_title">সংবাদ ভিউয়ার</string>
+
+    <!-- Settings -->
+    <string name="settings_title">সেটিংস</string>
+    <string name="settings_tagline">সীমান্তের অতন্দ্র প্রহরী</string>
+    <string name="settings_stat_keywords">কিওয়ার্ড</string>
+    <string name="settings_stat_feeds">ফিড</string>
+    <string name="settings_stat_channels">চ্যানেল</string>
+    <string name="settings_group_sources">খবরের উৎস</string>
+    <string name="settings_group_video">ভিডিও</string>
+    <string name="settings_group_app">অ্যাপ</string>
+    <string name="settings_api_active">এপিআই সক্রিয়</string>
+    <string name="settings_api_missing">এপিআই কী নেই — শুধু ফ্রি উৎস চলছে</string>
+    <string name="settings_quota_today">আজ ব্যবহৃত: %1$s / %2$s ইউনিট</string>
+    <string name="settings_quota_note">ফ্রি কোটা প্রতিদিন বাংলাদেশ সময় দুপুর ১-২টায় নতুন হয়। অ্যাপ ৮,০০০-এর বেশি খরচ করে না।</string>
+    <string name="settings_channels_line">%1$s টি নিউজ চ্যানেল থেকে ভিডিও আসে</string>
+    <string name="settings_badges_title">নতুন খবরের সংখ্যা</string>
+    <string name="settings_badges_on">নিচের মেনুতে নতুন খবর ও ভিডিওর সংখ্যা দেখাচ্ছে</string>
+    <string name="settings_badges_off">সংখ্যা দেখানো বন্ধ</string>
+    <string name="settings_theme_title">ডার্ক মোড</string>
+    <string name="settings_theme_dark">রাতের থিম চালু</string>
+    <string name="settings_theme_light">দিনের থিম চালু</string>
+    <string name="settings_about_title">অ্যাপ সম্পর্কে</string>
+    <string name="settings_about_version">সংস্করণ %1$s</string>
+    <string name="settings_keywords_empty">কোনো কিওয়ার্ড নেই — নিচে যোগ করুন</string>
+    <string name="settings_youtube_title">ইউটিউব এপিআই ও চ্যানেল আইডি</string>
+    <string name="settings_youtube_open">সেটিংস</string>
+    <string name="settings_cache_title">মেমোরি ক্লিনার</string>
+    <string name="settings_cache_description">অ্যাপের ক্যাশ ও পুরনো ডাটা পরিষ্কার করুন</string>
+    <string name="settings_cache_action">ক্লিন করুন</string>
+    <string name="settings_rss_title">আরএসএস ফিড (%1$d)</string>
+    <string name="settings_rss_subtitle">যেকোনো নিউজ সাইটের RSS লিংক যোগ করুন</string>
+    <string name="settings_rss_add_new">নতুন ফিড যুক্ত করুন</string>
+    <string name="settings_rss_name_hint">ফিডের নাম (ঐচ্ছিক, যেমন: প্রথম আলো)</string>
+    <string name="settings_keywords_title">আমার কিওয়ার্ড সমূহ (%1$d)</string>
+    <string name="settings_keywords_subtitle">নিউজ ও ভিডিও সার্চের কিওয়ার্ড পরিচালনা করুন</string>
+    <string name="settings_keyword_add_new">নতুন কিওয়ার্ড যুক্ত করুন</string>
+    <string name="settings_keyword_hint">নতুন কিওয়ার্ড...</string>
 </resources>

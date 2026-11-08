@@ -14,13 +14,13 @@ fun scheduleBackgroundNewsSync(context: Context) {
         .setRequiredNetworkType(NetworkType.CONNECTED)
         .build()
 
-    val newsWorkRequest = PeriodicWorkRequestBuilder<NewsWorker>(15, TimeUnit.MINUTES)
+    val newsWorkRequest = PeriodicWorkRequestBuilder<NewsWorker>(30, TimeUnit.MINUTES)
         .setConstraints(constraints)
         .build()
 
     WorkManager.getInstance(context).enqueueUniquePeriodicWork(
         "NewsSyncWork",
-        ExistingPeriodicWorkPolicy.KEEP,
+        ExistingPeriodicWorkPolicy.UPDATE,
         newsWorkRequest
     )
 }

@@ -1,188 +1,360 @@
 package com.example.data
 
+import android.content.Context
 import android.util.Log
-import com.example.BuildConfig
-import com.squareup.moshi.Moshi
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
-import retrofit2.Retrofit
-import retrofit2.converter.moshi.MoshiConverterFactory
 import java.io.StringReader
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import javax.inject.Inject
+import javax.inject.Singleton
 
 sealed class YouTubeFetchResult {
     data class Success(val videos: List<YouTubeSearchResult>) : YouTubeFetchResult()
     data class Error(val message: String, val rawCode: Int? = null) : YouTubeFetchResult()
 }
 
-class YouTubeRepository {
+/**
+ * Bangladeshi news videos: YouTube Data API (quota-guarded) with a free web fallback when no key is set.
+ */
+@Singleton
+class YouTubeRepository @Inject constructor(
+    private val httpClient: OkHttpClient,
+    private val apiService: YouTubeApiService,
+    @param:ApplicationContext private val context: Context
+) {
+    init {
+        QuotaGuard.attach(context)
+    }
+
+    /** API units spent today (YouTube's day, which resets at midnight Pacific time). */
+    val quotaUsedToday: StateFlow<Int> get() = QuotaGuard.usedToday
+
+    /** Free daily allowance from Google and the share of it the app lets itself use. */
+    val dailyQuotaLimit: Int get() = QuotaGuard.FREE_DAILY_UNITS
+    val dailyQuotaBudget: Int get() = QuotaGuard.DAILY_UNIT_BUDGET
+
     private fun logWarn(msg: String) {
         try {
             Log.w("YouTubeRepository", msg)
         } catch (_: Throwable) {}
     }
-    private val httpClient = SharedHttpClient.client
-    private val moshi = Moshi.Builder().build()
-
-    private val retrofit = Retrofit.Builder()
-        .baseUrl("https://www.googleapis.com/youtube/v3/")
-        .client(httpClient)
-        .addConverterFactory(MoshiConverterFactory.create(moshi))
-        .build()
-
-    private val apiService = retrofit.create(YouTubeApiService::class.java)
 
     // Maximum age for videos: 7 days (168 hours), while UI defaults to 48 hours filter
     private val maxVideoAgeMillis = 7L * 24L * 60L * 60L * 1000L
 
-    private val defaultNewsChannels = listOf(
-        "UCxHoBXkY88Tb8z1Ssj6CWsQ", // Somoy TV
-        "UCN6sm8iHiPd0cnoUardDAnw", // Jamuna TV
-        "UCATUkaOHwO9EP_W87zCiPbA", // Independent TV
-        "UCtqvtAVmad5zywaziN6CbfA", // Ekattor TV
-        "UCHLqIOMPk20w-6cFgkA90jw", // Channel 24
-        "UCUvXoiDEKI8VZJrr58g4VAw"  // DBC News
-    )
-
+    /**
+     * Collects recent keyword videos from every source at once. Each source hands its videos to
+     * [onPartial] the moment it finishes, so the screen fills in after a couple of seconds instead
+     * of waiting for the slowest of ~70 channels. The returned result is the complete, de-duplicated
+     * list with channel countries filled in.
+     */
     suspend fun fetchBgbVideos(
         keywords: List<String>,
         customApiKey: String = "",
-        customChannelIds: String = ""
+        customChannelIds: String = "",
+        onPartial: suspend (List<YouTubeSearchResult>) -> Unit = {}
     ): YouTubeFetchResult = withContext(Dispatchers.IO) {
         val effectiveKeywords = keywords.ifEmpty {
             listOf("বিজিবি", "বর্ডার গার্ড বাংলাদেশ", "সীমান্ত", "BGB", "BSF")
         }
 
-        val allVideoItems = mutableListOf<YouTubeSearchResult>()
-        val apiKey = customApiKey.trim().ifBlank { BuildConfig.YOUTUBE_API_KEY }
+        val collected = java.util.Collections.synchronizedList(mutableListOf<YouTubeSearchResult>())
+        val emitLock = kotlinx.coroutines.sync.Mutex()
+        val apiKey = customApiKey.trim()
         val hasValidApiKey = apiKey.isNotBlank() && apiKey != "MY_YOUTUBE_API_KEY"
         val userChannels = customChannelIds
             .split(",")
             .map { it.trim() }
             .filter { it.isNotBlank() && it != "UCxAI1M5Wv1rE4XbT1gNnt7g" }
+        val channels = (userChannels + NewsSources.youtubeNewsChannels + NewsSources.youtubeIndianChannels).distinct()
 
-        if (hasValidApiKey) {
-            try {
-                val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
-                    timeZone = TimeZone.getTimeZone("UTC")
+        suspend fun deliver(items: List<YouTubeSearchResult>) {
+            if (items.isEmpty()) return
+            collected.addAll(items)
+            val valid = validOnly(items, effectiveKeywords)
+                .map { it.withCountry(QuotaGuard.channelCountries[it.snippet?.channelId]) }
+            if (valid.isNotEmpty()) {
+                // one at a time, so the receiver never sees two batches interleaved
+                emitLock.lock()
+                try {
+                    runCatching { onPartial(valid) }
+                } finally {
+                    emitLock.unlock()
                 }
-                val publishedAfter = sdf.format(Date(System.currentTimeMillis() - maxVideoAgeMillis))
-
-                if (userChannels.isEmpty()) {
-                    val batchedQueries = effectiveKeywords.chunked(5).map { chunk ->
-                        chunk.joinToString(" | ")
-                    }
-                    supervisorScope {
-                        val deferreds = batchedQueries.map { combinedQuery ->
-                            async {
-                                try {
-                                    apiService.searchVideos(
-                                        query = combinedQuery,
-                                        publishedAfter = publishedAfter,
-                                        maxResults = 25,
-                                        apiKey = apiKey
-                                    ).items
-                                } catch (e: Exception) {
-                                    logWarn("API search batch failed: ${e.message}")
-                                    emptyList()
-                                }
-                            }
-                        }
-                        deferreds.awaitAll().forEach { allVideoItems.addAll(it) }
-                    }
-                } else {
-                    supervisorScope {
-                        val deferreds = userChannels.map { channelId ->
-                            async {
-                                try {
-                                    val channelResponse = apiService.getChannels(
-                                        channelId = channelId,
-                                        apiKey = apiKey
-                                    )
-                                    val uploadsPlaylistId = channelResponse.items.firstOrNull()?.contentDetails?.relatedPlaylists?.uploads
-                                    if (!uploadsPlaylistId.isNullOrBlank()) {
-                                        val response = apiService.getPlaylistItems(
-                                            playlistId = uploadsPlaylistId,
-                                            maxResults = 35,
-                                            apiKey = apiKey
-                                        )
-                                        response.items.mapNotNull { item ->
-                                            val title = item.snippet?.title ?: ""
-                                            val desc = item.snippet?.description ?: ""
-                                            val pubAt = item.snippet?.publishedAt
-                                            val isRecent = isRecentTimestamp(parseIsoTimestamp(pubAt))
-                                            val matches = effectiveKeywords.any { k ->
-                                                title.contains(k, ignoreCase = true) || desc.contains(k, ignoreCase = true)
-                                            }
-                                            if (isRecent && matches) {
-                                                YouTubeSearchResult(
-                                                    id = YouTubeVideoId(videoId = item.snippet?.resourceId?.videoId),
-                                                    snippet = item.snippet
-                                                )
-                                            } else null
-                                        }
-                                    } else emptyList()
-                                } catch (e: Exception) {
-                                    emptyList()
-                                }
-                            }
-                        }
-                        deferreds.awaitAll().forEach { allVideoItems.addAll(it) }
-                    }
-                }
-            } catch (e: Exception) {
-                logWarn("API fetch error, falling back to RSS/Web: ${e.message}")
             }
         }
 
-        if (allVideoItems.size < 10) {
-            supervisorScope {
-                val channelsToPoll = if (userChannels.isNotEmpty()) userChannels else defaultNewsChannels
-                val rssDeferreds = channelsToPoll.map { channelId ->
-                    async { fetchChannelRssVideos(channelId, effectiveKeywords) }
+        supervisorScope {
+            if (hasValidApiKey) {
+                // Quota plan (free tier = 10,000 units/day):
+                //  - Each channel's uploads playlist costs 1 unit and is cached for CHANNEL_CACHE_MS.
+                //  - Keyword searches cost 100 units per page and run at most once per SEARCH_INTERVAL_MS.
+                //  - QuotaGuard stops all API calls before the daily budget is exhausted.
+                channels.forEach { channelId ->
+                    launch {
+                        deliver(
+                            fetchChannelUploadsViaApi(channelId, apiKey).map { snippet ->
+                                YouTubeSearchResult(id = YouTubeVideoId(videoId = snippet.resourceId?.videoId), snippet = snippet)
+                            }
+                        )
+                    }
                 }
+                launch { deliver(fetchKeywordSearchViaApi(effectiveKeywords, apiKey)) }
+            }
 
-                val searchKeywords = effectiveKeywords.take(6)
-                val webSearchDeferreds = searchKeywords.flatMap { kw ->
-                    listOf(
-                        // Today filter + Upload date sort
-                        async { fetchYouTubeDirectSearch(kw, "CAISBAgCEAE%3D") },
-                        // Upload date sort (catches 24h-7d recent videos)
-                        async { fetchYouTubeDirectSearch(kw, "CAI%3D") }
-                    )
-                }
-
-                rssDeferreds.awaitAll().forEach { allVideoItems.addAll(it) }
-                webSearchDeferreds.awaitAll().forEach { allVideoItems.addAll(it) }
+            // Free sources run every time, API key or not: channel RSS feeds and the public search
+            // page cost no quota and catch videos the API's 50-result pages leave out.
+            channels.forEach { channelId ->
+                launch { deliver(fetchChannelRssVideos(channelId, effectiveKeywords)) }
+            }
+            effectiveKeywords.take(8).forEach { kw ->
+                launch { deliver(fetchYouTubeDirectSearch(kw, "CAISBAgCEAE%3D")) } // today, newest first
+                launch { deliver(fetchYouTubeDirectSearch(kw, "CAI%3D")) }         // newest first (up to 7 days)
             }
         }
 
-        // Strictly filter out old videos and sort newest first
-        val validVideoItems = allVideoItems
+        val validVideoItems = validOnly(collected.toList(), effectiveKeywords)
+        val withCountries = if (hasValidApiKey) withChannelCountries(validVideoItems, apiKey) else {
+            validVideoItems.map { it.withCountry(QuotaGuard.channelCountries[it.snippet?.channelId]) }
+        }
+
+        if (withCountries.isNotEmpty()) {
+            YouTubeFetchResult.Success(withCountries)
+        } else {
+            YouTubeFetchResult.Error(
+                "সাম্প্রতিক সময়ে আপনার কীওয়ার্ড অনুযায়ী কোনো নতুন ভিডিও পাওয়া যায়নি। রিফ্রেশ করে আবার চেষ্টা করুন।"
+            )
+        }
+    }
+
+    /**
+     * Recent videos whose TITLE is about one of the keywords (search results match descriptions,
+     * tags and other languages too: "BGB" also finds German civil-code videos), newest first.
+     */
+    private fun validOnly(items: List<YouTubeSearchResult>, keywords: List<String>): List<YouTubeSearchResult> =
+        items
             .filter { item ->
                 val vId = item.id?.videoId
                 val ts = parseIsoTimestamp(item.snippet?.publishedAt)
-                !vId.isNullOrBlank() && isRecentTimestamp(ts)
+                !vId.isNullOrBlank() && isRecentTimestamp(ts) &&
+                    KeywordMatcher.matches(item.snippet?.title.orEmpty(), keywords)
             }
             .distinctBy { it.id?.videoId }
             .sortedByDescending { parseIsoTimestamp(it.snippet?.publishedAt) }
 
-        if (validVideoItems.isNotEmpty()) {
-            YouTubeFetchResult.Success(validVideoItems)
-        } else {
-            YouTubeFetchResult.Error(
-                "সাম্প্রতিক সময়ে আপনার কীওয়ার্ড অনুযায়ী কোনো নতুন ভিডিও পাওয়া যায়নি। রিফ্রেশ করে আবার চেষ্টা করুন।"
-            )
+    /**
+     * Latest uploads of one channel via its "UU…" uploads playlist (1 quota unit).
+     * Served from cache while fresh; on failure or when the budget is spent, the last good copy is reused.
+     */
+    private suspend fun fetchChannelUploadsViaApi(channelId: String, apiKey: String): List<YouTubeSnippet> {
+        val now = System.currentTimeMillis()
+        val cached = QuotaGuard.channelCache[channelId]
+        if (cached != null && now - cached.first < QuotaGuard.CHANNEL_CACHE_MS) return cached.second
+
+        return try {
+            val uploadsPlaylistId = if (channelId.startsWith("UC")) {
+                "UU" + channelId.removePrefix("UC")
+            } else {
+                // Not a standard channel ID: resolve it once (1 unit) and remember the result
+                QuotaGuard.uploadsPlaylistIds[channelId] ?: run {
+                    if (!QuotaGuard.tryConsume(1)) return cached?.second.orEmpty()
+                    apiService.getChannels(channelId = channelId, apiKey = apiKey)
+                        .items.firstOrNull()?.contentDetails?.relatedPlaylists?.uploads
+                        ?.also { QuotaGuard.uploadsPlaylistIds[channelId] = it }
+                } ?: return cached?.second.orEmpty()
+            }
+            if (!QuotaGuard.tryConsume(1)) return cached?.second.orEmpty()
+            val snippets = apiService.getPlaylistItems(
+                playlistId = uploadsPlaylistId,
+                maxResults = 50,
+                apiKey = apiKey
+            ).items.mapNotNull { it.snippet }
+            QuotaGuard.channelCache[channelId] = now to snippets
+            snippets
+        } catch (e: Exception) {
+            logWarn("Uploads fetch failed for $channelId: ${e.message}")
+            cached?.second.orEmpty()
+        }
+    }
+
+    /**
+     * Keyword search across all of YouTube, run at most once per SEARCH_INTERVAL_MS (between runs
+     * the previous results are returned). Each keyword group gets its own query limited to the last
+     * SEARCH_WINDOW_MS and sorted newest first, so busy days are not cut off by one shared 50-result
+     * page. Each page costs 100 units; a second page is read only when the first was full of recent
+     * videos.
+     */
+    private suspend fun fetchKeywordSearchViaApi(keywords: List<String>, apiKey: String): List<YouTubeSearchResult> {
+        val now = System.currentTimeMillis()
+        if (now - QuotaGuard.lastSearchAt < QuotaGuard.SEARCH_INTERVAL_MS) return QuotaGuard.lastSearchResults
+        QuotaGuard.lastSearchAt = now
+        val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
+        val publishedAfter = sdf.format(Date(now - QuotaGuard.SEARCH_WINDOW_MS))
+        val results = mutableListOf<YouTubeSearchResult>()
+        var anySucceeded = false
+        for (query in searchQueries(keywords)) {
+            var pageToken: String? = null
+            for (page in 0 until QuotaGuard.MAX_SEARCH_PAGES) {
+                if (!QuotaGuard.tryConsume(100)) break
+                val response = try {
+                    apiService.searchVideos(
+                        query = query,
+                        publishedAfter = publishedAfter,
+                        maxResults = 50,
+                        pageToken = pageToken,
+                        apiKey = apiKey
+                    )
+                } catch (e: Exception) {
+                    logWarn("API search failed for '$query': ${e.message}")
+                    break
+                }
+                anySucceeded = true
+                results += response.items
+                pageToken = response.nextPageToken
+                if (pageToken == null || response.items.size < 50) break
+            }
+        }
+        if (!anySucceeded) return QuotaGuard.lastSearchResults
+        QuotaGuard.lastSearchResults = results
+        return results
+    }
+
+    /**
+     * Groups keywords into at most MAX_SEARCH_QUERIES "a | b | c" queries (YouTube's OR syntax),
+     * pairing each Bengali keyword with its English aliases so one query covers both spellings.
+     */
+    private fun searchQueries(keywords: List<String>): List<String> {
+        val terms = keywords.flatMap { KeywordMatcher.termsFor(it) }
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinctBy { it.lowercase() }
+        if (terms.isEmpty()) return emptyList()
+        val perQuery = ((terms.size + QuotaGuard.MAX_SEARCH_QUERIES - 1) / QuotaGuard.MAX_SEARCH_QUERIES)
+            .coerceIn(3, 6)
+        return terms.chunked(perQuery).take(QuotaGuard.MAX_SEARCH_QUERIES).map { it.joinToString(" | ") }
+    }
+
+    /**
+     * Adds each uploader's declared country (used to put Indian channels in their own chip).
+     * Unknown channels are looked up 50 at a time for 1 quota unit per batch and remembered for
+     * good, so after the first day this costs almost nothing.
+     */
+    private suspend fun withChannelCountries(videos: List<YouTubeSearchResult>, apiKey: String): List<YouTubeSearchResult> {
+        val known = YouTubeChannelDirectory.knownIds
+        val unknown = videos.mapNotNull { it.snippet?.channelId }
+            .filter { it !in known && !QuotaGuard.channelCountries.containsKey(it) }
+            .distinct()
+        for (batch in unknown.chunked(50)) {
+            if (!QuotaGuard.tryConsume(1)) break
+            try {
+                val found = apiService.getChannels(
+                    part = "snippet",
+                    channelId = batch.joinToString(","),
+                    maxResults = 50,
+                    apiKey = apiKey
+                ).items.associate { it.id.orEmpty() to it.snippet?.country.orEmpty() }
+                // Channels without a declared country are stored as "" so they are not asked again
+                batch.forEach { QuotaGuard.rememberCountry(it, found[it].orEmpty()) }
+            } catch (e: Exception) {
+                logWarn("Channel country lookup failed: ${e.message}")
+                break
+            }
+        }
+        return videos.map { it.withCountry(QuotaGuard.channelCountries[it.snippet?.channelId]) }
+    }
+
+    private fun YouTubeSearchResult.withCountry(country: String?): YouTubeSearchResult =
+        if (country.isNullOrEmpty() || snippet == null) this
+        else copy(snippet = snippet.copy(channelCountry = country))
+
+    /**
+     * Process-wide YouTube quota bookkeeping shared by every repository instance. Today's spend is
+     * saved so an app restart neither forgets it nor overspends.
+     *
+     * Rough daily cost with the app open all day: channels ~140 units every hour (~3,400) plus
+     * keyword searches 3 queries x up to 2 pages every 2 hours (~3,600) — under the 8,000 budget,
+     * and the guard stops everything before it is reached anyway.
+     */
+    private object QuotaGuard {
+        const val CHANNEL_CACHE_MS = 60L * 60L * 1000L        // re-read a channel at most every hour
+        const val SEARCH_INTERVAL_MS = 2L * 60L * 60L * 1000L // keyword search at most every 2 hours
+        const val SEARCH_WINDOW_MS = 24L * 60L * 60L * 1000L  // searches look at the last 24 hours
+        const val MAX_SEARCH_QUERIES = 3
+        const val MAX_SEARCH_PAGES = 2
+        const val FREE_DAILY_UNITS = 10_000
+        const val DAILY_UNIT_BUDGET = 8_000                   // stay safely under the free 10,000
+
+        val channelCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, List<YouTubeSnippet>>>()
+        val uploadsPlaylistIds = java.util.concurrent.ConcurrentHashMap<String, String>()
+        @Volatile var lastSearchAt = 0L
+        @Volatile var lastSearchResults: List<YouTubeSearchResult> = emptyList()
+
+        /** Channel ID -> declared country ("" when the channel declares none); kept across restarts. */
+        val channelCountries = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+        fun rememberCountry(channelId: String, country: String) {
+            channelCountries[channelId] = country
+            prefs?.edit()?.putString("country_$channelId", country)?.apply()
+        }
+
+        private val _usedToday = MutableStateFlow(0)
+        val usedToday: StateFlow<Int> = _usedToday.asStateFlow()
+
+        private var prefs: android.content.SharedPreferences? = null
+        private var quotaDay = ""
+        private var unitsUsed = 0
+
+        @Synchronized
+        fun attach(context: Context) {
+            if (prefs != null) return
+            prefs = context.getSharedPreferences("youtube_quota", Context.MODE_PRIVATE).also {
+                quotaDay = it.getString("day", "") ?: ""
+                unitsUsed = it.getInt("units", 0)
+                it.all.forEach { (key, value) ->
+                    if (key.startsWith("country_") && value is String) channelCountries[key.removePrefix("country_")] = value
+                }
+            }
+            rollOverIfNewDay()
+            _usedToday.value = unitsUsed
+        }
+
+        /** Reserves [units] from today's budget. */
+        @Synchronized
+        fun tryConsume(units: Int): Boolean {
+            rollOverIfNewDay()
+            if (unitsUsed + units > DAILY_UNIT_BUDGET) return false
+            unitsUsed += units
+            _usedToday.value = unitsUsed
+            prefs?.edit()?.putString("day", quotaDay)?.putInt("units", unitsUsed)?.apply()
+            return true
+        }
+
+        private fun rollOverIfNewDay() {
+            val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+                timeZone = TimeZone.getTimeZone("America/Los_Angeles")
+            }.format(Date())
+            if (today != quotaDay) {
+                quotaDay = today
+                unitsUsed = 0
+                _usedToday.value = 0
+            }
         }
     }
 
@@ -269,6 +441,7 @@ class YouTubeRepository {
                                                         title = vTitle,
                                                         description = vDesc,
                                                         channelTitle = channelTitle ?: "YouTube News",
+                                                        channelId = channelId,
                                                         publishedAt = published,
                                                         thumbnails = YouTubeThumbnails(
                                                             high = YouTubeThumbnail(url = thumbUrl),
@@ -332,6 +505,7 @@ class YouTubeRepository {
     private val videoIdRegex = """^\{"videoId":"([a-zA-Z0-9_-]{11})"""".toRegex()
     private val titleRunsRegex = """"title":\{"runs":\[\{"text":"((?:\\.|[^"\\])*)"""".toRegex()
     private val titleSimpleRegex = """"title":\{.*?"simpleText":"((?:\\.|[^"\\])*)"""".toRegex()
+    private val ownerBrowseIdRegex = """"browseId":"(UC[\w-]{22})"""".toRegex()
     private val channelRegex = """"ownerText":\{"runs":\[\{"text":"((?:\\.|[^"\\])*)"""".toRegex()
     private val publishedTimeSimpleRegex = """"publishedTimeText":\{"simpleText":"([^"]+)"\}""".toRegex()
     private val publishedTimeRunsRegex = """"publishedTimeText":\{"runs":\[\{"text":"([^"]+)"\}""".toRegex()
@@ -364,6 +538,10 @@ class YouTubeRepository {
                     ?: ""
                 val estimatedTimestamp = parseRelativeYouTubeTime(relTimeStr) ?: continue
 
+                val ownerStart = block.indexOf("\"ownerText\"")
+                val ownerChannelId = if (ownerStart >= 0) {
+                    ownerBrowseIdRegex.find(block, ownerStart)?.groupValues?.get(1)
+                } else null
                 val channelName = (channelRegex.find(block)?.groupValues?.get(1) ?: "YouTube News")
                     .replace("\\\"", "\"")
                     .replace("\\u0026", "&")
@@ -384,7 +562,9 @@ class YouTubeRepository {
                             title = rawTitle,
                             description = rawTitle,
                             channelTitle = channelName,
+                            channelId = ownerChannelId,
                             publishedAt = isoFormat.format(Date(estimatedTimestamp)),
+                            timeIsEstimate = true,
                             thumbnails = YouTubeThumbnails(
                                 high = YouTubeThumbnail(url = thumbUrl),
                                 medium = YouTubeThumbnail(url = thumbUrl),
@@ -458,7 +638,8 @@ class YouTubeRepository {
         }
     }
 
-    private fun parseIsoTimestamp(pubAt: String?): Long {
+    /** Epoch millis of a YouTube/RSS timestamp, or 0 when it cannot be read. */
+    fun parseIsoTimestamp(pubAt: String?): Long {
         if (pubAt.isNullOrBlank()) return 0L
         return try {
             val format = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US).apply {

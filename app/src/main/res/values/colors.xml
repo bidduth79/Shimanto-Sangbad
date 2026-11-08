@@ -7,4 +7,8 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <!-- Same in light and dark: the maroon emblem and its white ring stand out, and it hands over
+         to the app's default dark theme without a white flash -->
+    <color name="splash_background">#FF0A0F1C</color>
+    <color name="bgb_maroon">#FF7F1416</color>
 </resources>
