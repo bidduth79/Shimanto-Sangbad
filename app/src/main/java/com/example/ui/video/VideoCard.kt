@@ -59,7 +59,8 @@ fun VideoCard(
     val channelTitle = snippet?.channelTitle ?: ""
     val publishedAt = snippet?.publishedAt
     val resources = LocalContext.current.resources
-    val formattedTime = remember(publishedAt) { formatYouTubeDate(publishedAt, resources) }
+    val now = com.example.ui.components.LocalNow.current
+    val formattedTime = remember(publishedAt, now) { formatYouTubeDate(publishedAt, resources) }
     val videoId = video.id?.videoId ?: ""
     val thumbnailUrl = snippet?.thumbnails?.high?.url
         ?: snippet?.thumbnails?.medium?.url

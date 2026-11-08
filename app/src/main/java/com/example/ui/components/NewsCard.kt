@@ -116,7 +116,7 @@ fun NewsCard(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = formatRelativeTime(article.timestamp, article.pubDate),
+                    text = formatRelativeTime(article.timestamp, article.pubDate, LocalNow.current),
                     color = scheme.outline,
                     style = MaterialTheme.typography.labelSmall,
                     maxLines = 1
@@ -249,11 +249,11 @@ private fun CardAction(
     }
 }
 
-fun formatRelativeTime(timestamp: Long, fallback: String): String {
+fun formatRelativeTime(timestamp: Long, fallback: String, now: Long = System.currentTimeMillis()): String {
     if (timestamp == 0L) return fallback
     return DateUtils.getRelativeTimeSpanString(
         timestamp,
-        System.currentTimeMillis(),
+        now,
         DateUtils.MINUTE_IN_MILLIS
     ).toString()
 }

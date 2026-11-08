@@ -15,8 +15,9 @@ object StoryClusters {
     data class Cluster(val lead: NewsArticle, val others: List<NewsArticle>)
 
     /**
-     * [articles] newest first. Clusters keep the order of their newest report; the lead is the
-     * newest report that has a picture (the newest overall when none has one).
+     * [articles] newest first. Each cluster is shown as its newest report, so the card's time is
+     * the latest news on the event; when that report has no picture it borrows one from an older
+     * report of the same event.
      */
     fun cluster(articles: List<NewsArticle>): List<Cluster> {
         class Group(val words: Set<String>, val firstTime: Long, val members: MutableList<NewsArticle>)
@@ -32,8 +33,10 @@ object StoryClusters {
             else groups += Group(words, article.timestamp, mutableListOf(article))
         }
         return groups.map { group ->
-            val lead = group.members.firstOrNull { !it.imageUrl.isNullOrBlank() } ?: group.members.first()
-            Cluster(lead, group.members - lead)
+            val newest = group.members.first()
+            val picture = newest.imageUrl?.takeIf { it.isNotBlank() }
+                ?: group.members.firstNotNullOfOrNull { it.imageUrl?.takeIf { url -> url.isNotBlank() } }
+            Cluster(newest.copy(imageUrl = picture), group.members.drop(1))
         }
     }
 }

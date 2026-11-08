@@ -40,9 +40,10 @@ class NewFeaturesTest {
             )
         )
         assertEquals(2, clusters.size)
-        // the report with a picture leads its event
-        assertEquals("2", clusters[0].lead.link)
-        assertEquals(listOf("1"), clusters[0].others.map { it.link })
+        // the newest report leads (its time is what the card shows) and borrows the older one's picture
+        assertEquals("1", clusters[0].lead.link)
+        assertEquals("img", clusters[0].lead.imageUrl)
+        assertEquals(listOf("2"), clusters[0].others.map { it.link })
         assertEquals("3", clusters[1].lead.link)
     }
 

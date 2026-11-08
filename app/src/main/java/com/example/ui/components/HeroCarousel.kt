@@ -206,7 +206,7 @@ fun BreakingNewsHeroCarousel(
                             modifier = Modifier.weight(1f, fill = false)
                         )
                         Text(
-                            text = "  •  " + formatRelativeTime(article.timestamp, article.pubDate),
+                            text = "  •  " + formatRelativeTime(article.timestamp, article.pubDate, LocalNow.current),
                             color = Color.White.copy(alpha = 0.75f),
                             style = MaterialTheme.typography.labelSmall,
                             maxLines = 1

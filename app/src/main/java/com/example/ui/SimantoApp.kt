@@ -208,6 +208,7 @@ fun SimantoApp(
         LaunchedEffect(destination) { barVisible = true }
         val hideOnScroll = remember { HideOnScrollConnection { visible -> barVisible = visible } }
         val hazeState = rememberHazeState()
+        val minuteClock = com.example.ui.components.rememberMinuteClock()
         val barSpace = 84.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
         Scaffold(
@@ -219,7 +220,8 @@ fun SimantoApp(
            CompositionLocalProvider(
                LocalBottomBarSpace provides barSpace,
                LocalScrollToTopTick provides scrollToTopTick,
-               com.example.ui.components.LocalTranslateHeadlines provides settings.translateHeadlines
+               com.example.ui.components.LocalTranslateHeadlines provides settings.translateHeadlines,
+               com.example.ui.components.LocalNow provides minuteClock
            ) {
             Column(
                 modifier = Modifier
