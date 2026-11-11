@@ -28,6 +28,15 @@
             </intent-filter>
         </activity>
 
+        <!-- Invisible hand-over from the widget's WhatsApp button to WhatsApp -->
+        <activity
+            android:name=".widget.WhatsAppShareActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.NoDisplay" />
+
         <!-- Home-screen widget: latest border headlines -->
         <receiver
             android:name=".widget.BorderNewsWidgetReceiver"

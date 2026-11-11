@@ -60,12 +60,12 @@ class BorderNewsWidget : GlanceAppWidget() {
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val deps = EntryPointAccessors.fromApplication(context.applicationContext, Deps::class.java)
-        val keywords = deps.settingsRepository().current().keywords
         val now = System.currentTimeMillis()
         val headlines = deps.newsDao().getRecent(now - DAY_MILLIS)
             .asSequence()
             .filter { it.timestamp <= now + 10 * 60_000 }
-            .filter { keywords.isEmpty() || KeywordMatcher.matches(it.title, keywords) }
+            // Only BGB and BSF stories (their aliases included: BGB, বর্ডার গার্ড, BSF…)
+            .filter { KeywordMatcher.matches(it.title, WIDGET_KEYWORDS) }
             .distinctBy { NewsFilters.headlineKey(it.title) }
             .take(MAX_ITEMS)
             .toList()
@@ -82,10 +82,8 @@ class BorderNewsWidget : GlanceAppWidget() {
                 .cornerRadius(22.dp)
                 .padding(14.dp)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = GlanceModifier.fillMaxWidth().clickable(actionStartActivity(Intent(context, MainActivity::class.java)))
-            ) {
+            // Nothing here opens anything: the only control is each story's WhatsApp button
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = GlanceModifier.fillMaxWidth()) {
                 Image(ImageProvider(R.drawable.bgb_emblem_header), contentDescription = null, modifier = GlanceModifier.size(28.dp))
                 Spacer(GlanceModifier.width(8.dp))
                 Column {
@@ -99,29 +97,32 @@ class BorderNewsWidget : GlanceAppWidget() {
             } else {
                 LazyColumn {
                     items(headlines, itemId = { it.link.hashCode().toLong() }) { article ->
-                        Column(
-                            modifier = GlanceModifier
-                                .fillMaxWidth()
-                                .padding(vertical = 6.dp)
-                                .clickable(
-                                    actionStartActivity(
-                                        Intent(context, MainActivity::class.java).apply {
-                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                                            putExtra(NewsAlerts.EXTRA_LINK, article.link)
-                                            putExtra(NewsAlerts.EXTRA_TITLE, article.title)
-                                        }
-                                    )
-                                )
+                        Row(
+                            modifier = GlanceModifier.fillMaxWidth().padding(vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                article.title,
-                                maxLines = 2,
-                                style = TextStyle(color = WHITE, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                            )
-                            Text(
-                                "${NewsSourceKinds.publisherOf(article)} • ${ago(context, article.timestamp, now)}",
-                                maxLines = 1,
-                                style = TextStyle(color = MUTED, fontSize = 11.sp)
+                            Column(modifier = GlanceModifier.defaultWeight()) {
+                                Text(
+                                    article.title,
+                                    maxLines = 2,
+                                    style = TextStyle(color = WHITE, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                )
+                                Text(
+                                    "${NewsSourceKinds.publisherOf(article)} • ${ago(context, article.timestamp, now)}",
+                                    maxLines = 1,
+                                    style = TextStyle(color = MUTED, fontSize = 11.sp)
+                                )
+                            }
+                            Spacer(GlanceModifier.width(6.dp))
+                            Image(
+                                provider = ImageProvider(R.drawable.ic_widget_send),
+                                contentDescription = context.getString(R.string.news_share_whatsapp),
+                                modifier = GlanceModifier
+                                    .size(40.dp)
+                                    .cornerRadius(20.dp)
+                                    .background(BUTTON)
+                                    .padding(9.dp)
+                                    .clickable(actionStartActivity(whatsAppIntent(context, article)))
                             )
                         }
                     }
@@ -129,6 +130,16 @@ class BorderNewsWidget : GlanceAppWidget() {
             }
         }
     }
+
+    /**
+     * The WhatsApp button goes through [WhatsAppShareActivity], which opens WhatsApp's "send to"
+     * screen with the headline and link (a widget cannot do that directly; see that class).
+     */
+    private fun whatsAppIntent(context: Context, article: NewsArticle): Intent =
+        Intent(context, WhatsAppShareActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            putExtra(WhatsAppShareActivity.EXTRA_TEXT, article.title + '\n' + (article.originalLink ?: article.link))
+        }
 
     /**
      * Clock time ("রাত ১১:২০"), or day and time when older than today. A widget only redraws after
@@ -144,7 +155,10 @@ class BorderNewsWidget : GlanceAppWidget() {
     private fun bengali(n: Long) = n.toString().map { if (it in '0'..'9') '০' + (it - '0') else it }.joinToString("")
 
     companion object {
-        private const val MAX_ITEMS = 5
+        /** Every fresh story is listed; the cap only guards the system's size limit for widgets. */
+        private const val MAX_ITEMS = 100
+        private val WIDGET_KEYWORDS = listOf("বিজিবি", "বিএসএফ")
+        private val BUTTON = ColorProvider(Color(0x3325D366))
         private const val DAY_MILLIS = 24L * 60 * 60 * 1000
         private val BACKGROUND = ColorProvider(Color(0xF00A0F1C))
         private val WHITE = ColorProvider(Color(0xFFF1F5F9))

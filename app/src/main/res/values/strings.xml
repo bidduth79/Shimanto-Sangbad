@@ -196,7 +196,8 @@
     <string name="settings_channels_line">%1$s টি নিউজ চ্যানেল থেকে ভিডিও আসে</string>
     <string name="widget_name">সীমান্ত সংবাদ</string>
     <string name="widget_description">হোম স্ক্রিনে সর্বশেষ সীমান্ত-খবর</string>
-    <string name="widget_subtitle">সর্বশেষ সীমান্ত খবর</string>
+    <string name="widget_subtitle">বিজিবি ও বিএসএফের নতুন খবর</string>
+    <string name="widget_whatsapp_missing">এই ফোনে হোয়াটসঅ্যাপ পাওয়া যায়নি</string>
     <string name="widget_empty">এখনো কোনো খবর নেই — অ্যাপ খুলে রিফ্রেশ করুন</string>
     <string name="widget_minutes_ago">%1$s মিনিট আগে</string>
     <string name="widget_hours_ago">%1$s ঘণ্টা আগে</string>
