@@ -61,7 +61,8 @@ class BorderNewsWidget : GlanceAppWidget() {
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val deps = EntryPointAccessors.fromApplication(context.applicationContext, Deps::class.java)
         val now = System.currentTimeMillis()
-        val headlines = deps.newsDao().getRecent(now - DAY_MILLIS)
+        // Today's stories only, like everywhere else in the app
+        val headlines = deps.newsDao().getRecent(NewsFilters.startOfToday(now))
             .asSequence()
             .filter { it.timestamp <= now + 10 * 60_000 }
             // Only BGB and BSF stories (their aliases included: BGB, বর্ডার গার্ড, BSF…)

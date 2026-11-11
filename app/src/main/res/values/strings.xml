@@ -108,7 +108,7 @@
     <string name="time_filter_label">সময়</string>
     <string name="time_filter_hours">%1$s ঘণ্টা</string>
     <string name="time_filter_last_hours">গত %1$s ঘণ্টা</string>
-    <string name="time_filter_all">সব খবর (৩৬ ঘণ্টা)</string>
+    <string name="time_filter_all">আজকের সব খবর</string>
     <string name="time_menu_title">সময় অনুযায়ী ফিল্টার</string>
     <string name="time_menu_subtitle">কত সময়ের মধ্যের খবর দেখবেন</string>
 

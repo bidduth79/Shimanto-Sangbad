@@ -50,20 +50,33 @@ class NewsViewModel @Inject constructor(
     private val keywords = settingsRepository.settings.map { it.keywords }.distinctUntilChanged()
 
     /**
+     * Local midnight of the current day. Only stories published after it are shown anywhere; the
+     * value moves on within half a minute of the date changing, even with the app left open.
+     */
+    private val dayStart = kotlinx.coroutines.flow.flow {
+        while (true) {
+            emit(NewsFilters.startOfToday())
+            kotlinx.coroutines.delay(30_000)
+        }
+    }.distinctUntilChanged()
+
+    /**
      * Only articles whose headline is about one of the user's current keywords. Applied on read as
      * well as on write, so rows stored by older, looser rules (or before a keyword was removed)
      * disappear immediately. Shared so the start-up wait below and the screen use one query.
      */
-    private val regionalNews = combine(newsRepository.news, keywords) { news, kws ->
-        groupNewsByRegion(NewsFilters.onlyAboutKeywords(news, kws))
+    private val regionalNews = combine(newsRepository.news, keywords, dayStart) { news, kws, start ->
+        groupNewsByRegion(NewsFilters.onlyAboutKeywords(news.filter { it.timestamp >= start }, kws))
     }
         .flowOn(Dispatchers.Default)
         .shareIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), replay = 1)
 
     private val inputs = combine(
         regionalNews,
-        combine(newsRepository.facebookNews, keywords) { fb, kws -> NewsFilters.onlyAboutKeywords(fb, kws) },
-        newsRepository.customFeedNews,
+        combine(newsRepository.facebookNews, keywords, dayStart) { fb, kws, start ->
+            NewsFilters.onlyAboutKeywords(fb.filter { it.timestamp >= start }, kws)
+        },
+        combine(newsRepository.customFeedNews, dayStart) { feeds, start -> feeds.filter { it.timestamp >= start } },
         newsRepository.savedNews,
         settingsRepository.settings
     ) { regional, facebook, customFeeds, saved, settings ->

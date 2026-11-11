@@ -8,8 +8,47 @@ import java.util.Calendar
  */
 object NewsFilters {
 
-    /** Articles older than this are dropped everywhere (except bookmarks). */
+    /**
+     * Articles older than this are not stored. What is SHOWN is narrower: only stories published
+     * today ([startOfToday]). Yesterday's stories stay stored but hidden on purpose: some feeds move
+     * an old story's date forward when they edit it, and only a stored copy (which keeps the
+     * first-seen time) stops such a story from coming back as "today's".
+     */
     const val MAX_NEWS_AGE_MILLIS = 36L * 60 * 60 * 1000L
+
+    /** How long hidden rows are kept as that memory before being deleted. */
+    const val KEEP_STORED_MILLIS = 4L * 24 * 60 * 60 * 1000L
+
+    /** Local midnight at the start of the day [now] falls in: nothing published before it is shown. */
+    fun startOfToday(now: Long = System.currentTimeMillis(), zone: java.util.TimeZone = java.util.TimeZone.getDefault()): Long {
+        val calendar = Calendar.getInstance(zone)
+        calendar.timeInMillis = now
+        calendar.set(Calendar.HOUR_OF_DAY, 0)
+        calendar.set(Calendar.MINUTE, 0)
+        calendar.set(Calendar.SECOND, 0)
+        calendar.set(Calendar.MILLISECOND, 0)
+        return calendar.timeInMillis
+    }
+
+    private val URL_DATE_REGEX = Regex("(20[0-9]{2})[/-](0?[1-9]|1[0-2])[/-](0?[1-9]|[12][0-9]|3[01])(?![0-9])")
+    private const val DAY_MILLIS = 24L * 60 * 60 * 1000L
+
+    /**
+     * True when the address itself carries a date ("/2026/11/05/") from before yesterday: an old
+     * page that a search engine or feed is presenting with a fresh date. Yesterday is tolerated
+     * because sites that date their addresses in UTC are a day behind in the first hours of a day;
+     * such a story is still judged by its publish time.
+     */
+    fun hasOldDateInUrl(url: String, now: Long = System.currentTimeMillis()): Boolean {
+        val yesterday = startOfToday(now) - DAY_MILLIS
+        return URL_DATE_REGEX.findAll(url).any { match ->
+            val (year, month, day) = match.destructured
+            val calendar = Calendar.getInstance()
+            calendar.clear()
+            calendar.set(year.toInt(), month.toInt() - 1, day.toInt())
+            calendar.timeInMillis < yesterday
+        }
+    }
 
     /** Feeds sometimes stamp items a few minutes in the future; allow that much clock skew. */
     private const val FUTURE_TOLERANCE_MILLIS = 10L * 60 * 1000L
@@ -41,7 +80,8 @@ object NewsFilters {
         if (article.timestamp <= 0L) return false
         val age = now - article.timestamp
         if (age < -FUTURE_TOLERANCE_MILLIS || age > MAX_NEWS_AGE_MILLIS) return false
-        return !hasOldArchiveYear(article.originalLink ?: article.link, article.title)
+        val url = article.originalLink ?: article.link
+        return !hasOldArchiveYear(url, article.title) && !hasOldDateInUrl(url, now)
     }
 
     fun isSports(article: NewsArticle): Boolean = SPORTS_KEYWORDS.any {

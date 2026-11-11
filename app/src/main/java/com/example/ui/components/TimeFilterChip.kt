@@ -39,7 +39,7 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import com.example.R
 
-/** Hour windows offered by the time filter; null = everything the app keeps (36 hours). */
+/** Hour windows offered by the time filter; null = everything shown (news: today; videos: 7 days). */
 val TimeFilterOptions: List<Int?> = listOf(1, 3, 6, 12, 24, null)
 
 private val ActiveRed = Color(0xFFE11D48)
@@ -56,7 +56,7 @@ fun TimeFilterChip(
     maxAgeHours: Int?,
     onSelect: (Int?) -> Unit,
     modifier: Modifier = Modifier,
-    /** Label of the "no limit" choice: news is kept 36 hours, videos 7 days. */
+    /** Label of the "no limit" choice: news shows today only, videos 7 days. */
     allLabel: String = stringResource(R.string.time_filter_all)
 ) {
     var expanded by remember { mutableStateOf(false) }

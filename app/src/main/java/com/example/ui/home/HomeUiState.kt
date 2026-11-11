@@ -32,7 +32,7 @@ data class HomeSelection(
     val searchQuery: String = "",
     /** Keyword picked in the header menu (null = all news). Separate from the free-text search. */
     val keyword: String? = null,
-    /** Only stories from the last N hours (null = everything kept, i.e. 36 hours). */
+    /** Only stories from the last N hours (null = all of today). */
     val maxAgeHours: Int? = null,
     /** Country tabs: hide stories already read. */
     val onlyUnread: Boolean = false,

@@ -71,7 +71,7 @@ class NewsRepository @Inject constructor(
             lastBingAt.clear()
             lastSyncedKeywords = keywords
         }
-        dao.deleteOldNews(System.currentTimeMillis() - NewsFilters.MAX_NEWS_AGE_MILLIS)
+        dao.deleteOldNews(System.currentTimeMillis() - NewsFilters.KEEP_STORED_MILLIS)
         supervisorScope {
             launch { syncRegion(NewsRegion.BANGLADESH, keywords) }
             launch { syncFacebook(keywords) }
@@ -207,7 +207,8 @@ class NewsRepository @Inject constructor(
      * without recomputing after every single picture.
      */
     suspend fun fillMissingImages() = withContext(Dispatchers.IO) {
-        val since = System.currentTimeMillis() - NewsFilters.MAX_NEWS_AGE_MILLIS
+        // Only today's stories are shown, so only they need pictures
+        val since = NewsFilters.startOfToday()
         val missing = (dao.getWithoutImage(listOf(NewsFilters.CATEGORY_BANGLADESH), since, IMAGE_BATCH_LIMIT) +
             dao.getWithoutImage(NewsFilters.NEWS_CATEGORIES + NewsFilters.CATEGORY_FACEBOOK, since, IMAGE_BATCH_LIMIT))
             .distinctBy { it.link }
@@ -292,11 +293,12 @@ class NewsRepository @Inject constructor(
      * recomputes once per burst instead of once per write.
      */
     private fun observeFresh(categories: List<String>, keep: (NewsArticle) -> Boolean): Flow<List<NewsArticle>> =
-        dao.observeByCategories(categories, since = System.currentTimeMillis() - NewsFilters.MAX_NEWS_AGE_MILLIS)
+        dao.observeByCategories(categories, since = NewsFilters.startOfToday())
             .retryReads()
             .conflate()
             .map { list ->
-                val cutoff = System.currentTimeMillis() - NewsFilters.MAX_NEWS_AGE_MILLIS
+                // Only stories published today (the view model re-checks when the date changes)
+                val cutoff = NewsFilters.startOfToday()
                 list.filter { it.timestamp >= cutoff && keep(it) }
             }
             .flowOn(Dispatchers.Default)

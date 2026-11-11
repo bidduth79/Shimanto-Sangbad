@@ -164,4 +164,30 @@ class NewsFetchingFixesTest {
         assertEquals(SourceHealth.Level.OK, SourceHealth.levelOf(all.getValue("feed:y"), now))
         assertFalse(all.getValue("feed:y").lastError == null)
     }
+
+    // ---- only today's news is shown ----
+
+    @Test
+    fun `today starts at local midnight`() {
+        val dhaka = java.util.TimeZone.getTimeZone("Asia/Dhaka")
+        // now = 2026-11-10 15:00 UTC = 21:00 in Dhaka; that day began at 2026-11-09 18:00 UTC
+        val midnight = NewsFilters.startOfToday(now, dhaka)
+        assertEquals(now - 21 * hour, midnight)
+        // one minute after midnight it is a new day; one minute before, still the old one
+        assertEquals(midnight + 24 * hour, NewsFilters.startOfToday(midnight + 24 * hour + 60_000, dhaka))
+        assertEquals(midnight, NewsFilters.startOfToday(midnight + 24 * hour - 60_000, dhaka))
+    }
+
+    @Test
+    fun `an address dated before yesterday marks an old page whatever its stated time`() {
+        assertTrue(NewsFilters.hasOldDateInUrl("https://www.dhakatimes24.com/2026/11/05/416870", now))
+        assertTrue(NewsFilters.hasOldDateInUrl("https://paper.com/news/2026-10-31/story", now))
+        // today and yesterday (UTC-dated addresses lag a day early in the morning) are fine
+        assertFalse(NewsFilters.hasOldDateInUrl("https://www.dhakatimes24.com/2026/11/10/416870", now))
+        assertFalse(NewsFilters.hasOldDateInUrl("https://www.dhakatimes24.com/2026/11/09/416870", now))
+        // plain numbers are not dates
+        assertFalse(NewsFilters.hasOldDateInUrl("https://www.jagonews24.com/national/news/1177973", now))
+        val old = article("x", now - hour).copy(originalLink = "https://paper.com/2026/11/01/story")
+        assertFalse(NewsFilters.isFresh(old, now))
+    }
 }

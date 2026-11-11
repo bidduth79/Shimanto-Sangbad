@@ -39,7 +39,7 @@ class NewsAlerts @Inject constructor(
         if (!settings.alertsEnabled || settings.alertKeywords.isEmpty()) return@withLock
 
         val fresh = pickAlerts(
-            recent = newsDao.getRecent(now - WINDOW_MILLIS),
+            recent = newsDao.getRecent(maxOf(now - WINDOW_MILLIS, NewsFilters.startOfToday(now))),
             alertKeywords = settings.alertKeywords,
             topicKeywords = settings.keywords,
             alreadyNotified = settingsRepository.notifiedLinks(),
