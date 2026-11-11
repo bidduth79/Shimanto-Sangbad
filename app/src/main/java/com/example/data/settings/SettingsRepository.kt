@@ -203,6 +203,13 @@ class SettingsRepository @Inject constructor(
         store.edit { it[LAST_SYNC_AT] = millis }
     }
 
+    /** Which one-time repairs of stored rows have already run (see NewsRepository.repairStoredData). */
+    suspend fun dataFixVersion(): Int = store.data.first()[DATA_FIX_VERSION] ?: 0
+
+    suspend fun setDataFixVersion(version: Int) {
+        store.edit { it[DATA_FIX_VERSION] = version }
+    }
+
     /** Version of the country rules that the stored `region` values were computed with. */
     suspend fun regionRulesVersion(): Int = store.data.first()[REGION_RULES_VERSION] ?: 0
 
@@ -242,6 +249,7 @@ class SettingsRepository @Inject constructor(
         internal val YOUTUBE_API_KEY = stringPreferencesKey("youtube_api_key")
         internal val LAST_SYNC_AT = longPreferencesKey("last_sync_at")
         internal val REGION_RULES_VERSION = intPreferencesKey("region_rules_version")
+        internal val DATA_FIX_VERSION = intPreferencesKey("data_fix_version")
         internal val SHOW_NEW_BADGES = booleanPreferencesKey("show_new_badges")
         internal val LAST_SEEN_HOME = longPreferencesKey("last_seen_home_at")
         internal val LAST_SEEN_VIDEO = longPreferencesKey("last_seen_video_at")

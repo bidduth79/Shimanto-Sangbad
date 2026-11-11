@@ -10,6 +10,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.LightMode
@@ -190,6 +191,21 @@ fun SettingsScreen(
 
         GroupLabel(stringResource(R.string.settings_group_video))
         YouTubeCard(state = state, onOpen = { showYouTubeDialog = true })
+
+        val healthNow = com.example.ui.components.LocalNow.current
+        val problems = problemCount(state.sourceStatuses, healthNow)
+        ExpandableSettingsCard(
+            icon = Icons.Default.MonitorHeart,
+            title = stringResource(R.string.health_title),
+            subtitle = when {
+                state.sourceStatuses.isEmpty() -> stringResource(R.string.health_waiting)
+                problems == 0 -> stringResource(R.string.health_all_ok)
+                else -> stringResource(R.string.health_problems, com.example.ui.components.bengaliDigits(problems))
+            },
+            testTag = "source_health_card"
+        ) {
+            SourceHealthBody(state.sourceStatuses, state.lastRefreshRoundAt)
+        }
 
         GroupLabel(stringResource(R.string.settings_group_app))
         SettingsCard {

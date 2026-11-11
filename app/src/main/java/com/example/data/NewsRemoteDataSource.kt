@@ -20,14 +20,20 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Talks to the outside world: news search engines (Google News, Bing, Yahoo, DuckDuckGo, Reddit)
- * and newspapers' own RSS feeds. Returns raw articles; filtering and storage live in [NewsRepository].
+ * Talks to the outside world: news search engines (Google News, Bing) and newspapers' own RSS feeds.
+ * Returns raw articles; filtering and storage live in [NewsRepository]. Every request's outcome is
+ * noted in [SourceHealth], and known time-zone mistakes of sources are repaired by [FeedClock].
  */
 @Singleton
 class NewsRemoteDataSource @Inject constructor(
     private val httpClient: OkHttpClient
 ) {
 
+    /**
+     * One Google News RSS search. [keyword] is a complete Google query (operators such as intitle:,
+     * OR and -site: are allowed); [whenWindow] limits it to recent items ("3h", "8h", "1d").
+     * Google returns at most 100 items per search, ranked by relevance rather than by date.
+     */
     suspend fun fetchNews(
         keyword: String,
         hl: String = "bn",
@@ -38,7 +44,9 @@ class NewsRemoteDataSource @Inject constructor(
         val encodedKeyword = URLEncoder.encode(keyword, "UTF-8")
         val cacheBuster = System.currentTimeMillis() / 30_000L
         val urlString = "https://news.google.com/rss/search?q=$encodedKeyword+when:$whenWindow&hl=$hl&gl=$gl&ceid=$ceid&cb=$cacheBuster"
-        fetchRssFromUrl(urlString, defaultSource = "Google News", requireValidTimestamp = true)
+        val fetched = fetchRssFromUrl(urlString, defaultSource = "Google News", requireValidTimestamp = true)
+        SourceHealth.record(SourceHealth.GOOGLE, "Google News", SourceHealth.Kind.SEARCH, fetched.error, fetched.articles)
+        fetched.articles
             .filter { !hasOldArchiveYear(it.originalLink ?: it.link, it.title) }
             .map { article ->
                 val cleanSource = if (article.source.isBlank() || article.source == "Unknown") "Google News" else article.source
@@ -66,7 +74,11 @@ class NewsRemoteDataSource @Inject constructor(
         val encodedKeyword = URLEncoder.encode(cleanQuery, "UTF-8")
         val cacheBuster = System.currentTimeMillis() / 30_000L
         val urlString = "https://www.bing.com/news/search?q=$encodedKeyword&qft=interval%3d%227%22+sortbydate%3d%221%22&setmkt=$market&format=rss&cb=$cacheBuster"
-        fetchRssFromUrl(urlString, defaultSource = "Bing News", requireValidTimestamp = true)
+        val fetched = fetchRssFromUrl(urlString, defaultSource = "Bing News", requireValidTimestamp = true)
+        // Bing states Pacific time under a "GMT" label: without this every item looks 8 hours old
+        val articles = FeedClock.fixBing(fetched.articles)
+        SourceHealth.record(SourceHealth.BING, "Bing News", SourceHealth.Kind.SEARCH, fetched.error, articles)
+        articles
             .filter { !hasOldArchiveYear(it.originalLink ?: it.link, it.title) }
             .map { article ->
                 val cleanSource = if (article.source.isBlank() || article.source == "Unknown") "Bing News" else article.source
@@ -86,7 +98,16 @@ class NewsRemoteDataSource @Inject constructor(
      * Fetches articles directly from a user-configured Custom RSS or Atom feed URL.
      */
     suspend fun fetchCustomRssFeed(feed: RssFeedItem): List<NewsArticle> = withContext(Dispatchers.IO) {
-        fetchRssFromUrl(feed.url, defaultSource = feed.title, requireValidTimestamp = false)
+        val fetched = fetchRssFromUrl(feed.url, defaultSource = feed.title, requireValidTimestamp = false)
+        val now = System.currentTimeMillis()
+        SourceHealth.record(SourceHealth.customKey(feed.url), feed.title, SourceHealth.Kind.CUSTOM, fetched.error, fetched.articles, now)
+        FeedClock.fixLocalLabelledAsUtc(
+            feedUrl = feed.url,
+            knownBroken = false,
+            localOffsetMillis = FeedClock.BANGLADESH_OFFSET_MILLIS,
+            articles = datedOrStamped(fetched.articles, now),
+            now = now
+        )
             .filter { !hasOldArchiveYear(it.originalLink ?: it.link, it.title) }
             .map { article ->
                 val src = if (article.source.isBlank() || article.source == "Unknown") {
@@ -94,13 +115,18 @@ class NewsRemoteDataSource @Inject constructor(
                 } else {
                     article.source
                 }
-                article.copy(
-                    source = src,
-                    category = "rss",
-                    matchedKeyword = feed.title,
-                    timestamp = if (article.timestamp > 0L) article.timestamp else System.currentTimeMillis()
-                )
+                article.copy(source = src, category = "rss", matchedKeyword = feed.title)
             }
+    }
+
+    /**
+     * Undated items of a custom feed. In a feed that normally dates its items, an undated one is of
+     * unknown age (it can be months old), so it is left out instead of being shown as "just now".
+     * A feed that gives no dates at all keeps working: its items are stamped with the fetch time.
+     */
+    internal fun datedOrStamped(articles: List<NewsArticle>, now: Long): List<NewsArticle> {
+        val dated = articles.filter { it.timestamp > 0L }
+        return if (dated.size * 2 >= articles.size) dated else articles.map { if (it.timestamp > 0L) it else it.copy(timestamp = now) }
     }
 
     /**
@@ -140,9 +166,18 @@ class NewsRemoteDataSource @Inject constructor(
         feedCache[feed.url]?.let { (fetchedAt, articles) ->
             if (now - fetchedAt < FEED_CACHE_MS) return articles
         }
-        val articles = feedSemaphore.withPermit {
+        val fetched = feedSemaphore.withPermit {
             fetchRssFromUrl(feed.url, defaultSource = feed.name, requireValidTimestamp = true)
         }
+        // Some sites write local time under a UTC label; see FeedClock
+        val articles = FeedClock.fixLocalLabelledAsUtc(
+            feedUrl = feed.url,
+            knownBroken = feed.localTimeLabelledUtc,
+            localOffsetMillis = FeedClock.localOffsetOf(feed.region),
+            articles = fetched.articles,
+            now = now
+        )
+        SourceHealth.record(SourceHealth.feedKey(feed.url), feed.name, SourceHealth.Kind.NEWSPAPER, fetched.error, articles, now)
         if (articles.isNotEmpty()) feedCache[feed.url] = now to articles
         return articles
     }
@@ -153,6 +188,7 @@ class NewsRemoteDataSource @Inject constructor(
         val feedCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, List<NewsArticle>>>()
         val feedSemaphore = kotlinx.coroutines.sync.Semaphore(FEED_PARALLELISM)
         const val MIN_VALID_FEED_TIME = 946_684_800_000L // 2000-01-01 UTC
+        val TWO_DIGIT_YEAR = Regex("""(\d{1,2} [A-Za-z]{3,9}),? (\d{2}),? (\d{1,2}:\d{2})""")
     }
 
     /**
@@ -248,37 +284,31 @@ class NewsRemoteDataSource @Inject constructor(
     }
 
     /**
-     * Fetches public Facebook page posts, viral Facebook discussions, and social media news reports
-     * for the given keyword (strictly within the last 24h) and tags them with category = "facebook".
+     * Public Facebook posts indexed by Google News that match [query] (a Google query, normally
+     * intitle: terms) within [whenWindow]. Tagged category = "facebook". Google names the publisher
+     * of every such post just "Facebook"; the page's own name is filled in later, once the link has
+     * been decoded (see [NewsRepository.fillMissingImages]).
      */
-    suspend fun fetchFacebookNews(keyword: String): List<NewsArticle> = withContext(Dispatchers.IO) {
-        val query = "(site:facebook.com OR \"ফেসবুক\" OR \"Facebook\") $keyword"
-        val encodedQuery = URLEncoder.encode(query, "UTF-8")
+    suspend fun fetchFacebookPosts(query: String, whenWindow: String, tag: String): List<NewsArticle> = withContext(Dispatchers.IO) {
+        val encodedQuery = URLEncoder.encode("site:facebook.com $query", "UTF-8")
         val cacheBuster = System.currentTimeMillis() / 30_000L
-        val urlString = "https://news.google.com/rss/search?q=$encodedQuery+when:1d&hl=bn&gl=BD&ceid=BD:bn&cb=$cacheBuster"
-        val rawArticles = fetchRssFromUrl(urlString, defaultSource = "সোশ্যাল ফিড", requireValidTimestamp = true)
+        val urlString = "https://news.google.com/rss/search?q=$encodedQuery+when:$whenWindow&hl=bn&gl=BD&ceid=BD:bn&cb=$cacheBuster"
+        val fetched = fetchRssFromUrl(urlString, defaultSource = NewsFilters.FACEBOOK_SOURCE, requireValidTimestamp = true)
+        SourceHealth.record(SourceHealth.FACEBOOK, "Facebook", SourceHealth.Kind.SEARCH, fetched.error, fetched.articles)
+        fetched.articles
             .filter { !hasOldArchiveYear(it.originalLink ?: it.link, it.title) }
-        rawArticles.map { article ->
-            val src = if (article.source.contains("Facebook", ignoreCase = true) || article.link.contains("facebook.com", ignoreCase = true)) {
-                "Facebook • ${article.source}"
-            } else {
-                "FB/Social • ${article.source}"
-            }
-            article.copy(
-                source = src,
-                category = "facebook",
-                matchedKeyword = keyword
-            )
-        }
+            .map { it.copy(source = NewsFilters.FACEBOOK_SOURCE, category = NewsFilters.CATEGORY_FACEBOOK, matchedKeyword = tag) }
     }
+
+    /** Parsed items of one feed request, or why there are none. */
+    private class FeedFetch(val articles: List<NewsArticle>, val error: String?)
 
     private fun fetchRssFromUrl(
         urlString: String,
         defaultSource: String = "Unknown",
         requireValidTimestamp: Boolean = true
-    ): List<NewsArticle> {
-        val articles = mutableListOf<NewsArticle>()
-        try {
+    ): FeedFetch {
+        return try {
             val request = Request.Builder()
                 .url(urlString)
                 .header(
@@ -291,18 +321,46 @@ class NewsRemoteDataSource @Inject constructor(
                 .build()
 
             httpClient.newCall(request).execute().use { response ->
-                if (response.isSuccessful) {
-                    val bodyStream = response.body?.byteStream()
-                    if (bodyStream != null) {
-                        articles.addAll(parseUniversalFeed(bodyStream, defaultSource, requireValidTimestamp))
-                    }
+                if (!response.isSuccessful) return FeedFetch(emptyList(), "HTTP ${response.code}")
+                val bodyStream = response.body?.byteStream() ?: return FeedFetch(emptyList(), "empty reply")
+                val parsed = parseUniversalFeed(skipLeadingBlanks(bodyStream), defaultSource, requireValidTimestamp)
+                val error = when {
+                    parsed.itemsSeen == 0 -> "no items"
+                    parsed.articles.isEmpty() -> "no dated items"
+                    else -> null
                 }
+                FeedFetch(parsed.articles, error)
             }
         } catch (e: Exception) {
-            // Ignore transient individual feed timeouts
+            FeedFetch(emptyList(), describe(e))
         }
-        return articles
     }
+
+    /**
+     * Some sites send blank lines or a byte-order mark before `<?xml`; Android's parser rejects
+     * such a document outright, so they are skipped.
+     */
+    private fun skipLeadingBlanks(stream: InputStream): InputStream {
+        val pushback = java.io.PushbackInputStream(stream, 1)
+        while (true) {
+            val byte = pushback.read()
+            if (byte == -1) break
+            // whitespace, or the three bytes of a UTF-8 byte-order mark
+            if (byte == 0x20 || byte == 0x09 || byte == 0x0A || byte == 0x0D || byte == 0xEF || byte == 0xBB || byte == 0xBF) continue
+            pushback.unread(byte)
+            break
+        }
+        return pushback
+    }
+
+    private fun describe(e: Exception): String = when (e) {
+        is java.net.SocketTimeoutException, is java.io.InterruptedIOException -> "timeout"
+        is java.net.UnknownHostException -> "no connection"
+        is javax.net.ssl.SSLException -> "SSL error"
+        else -> e.javaClass.simpleName
+    }
+
+    private class ParsedFeed(val articles: List<NewsArticle>, val itemsSeen: Int)
 
     /**
      * Universal XML Feed Parser supporting RSS 2.0 (<rss>/<channel>/<item>),
@@ -313,8 +371,9 @@ class NewsRemoteDataSource @Inject constructor(
         inputStream: InputStream,
         defaultSource: String,
         requireValidTimestamp: Boolean = true
-    ): List<NewsArticle> {
+    ): ParsedFeed {
         val articles = mutableListOf<NewsArticle>()
+        var itemsSeen = 0
         try {
             val factory = XmlPullParserFactory.newInstance()
             factory.isNamespaceAware = false
@@ -364,9 +423,9 @@ class NewsRemoteDataSource @Inject constructor(
                                     }
                                 }
                                 tagName == "title" -> {
-                                    if (title.isBlank()) {
-                                        title = safeNextText(parser).trim()
-                                    }
+                                    // Some feeds (The Daily Star) wrap the headline in an <a> element
+                                    val text = innerText(parser).trim()
+                                    if (title.isBlank()) title = text
                                 }
                                 tagName == "link" -> {
                                     val hrefAttr = parser.getAttributeValue(null, "href")
@@ -437,6 +496,7 @@ class NewsRemoteDataSource @Inject constructor(
                             insideAuthor = false
                         } else if (tagName == "item" || tagName == "entry") {
                             insideItem = false
+                            itemsSeen++
                             val finalLink = link.ifBlank { guid }
                             val cleanTitle = decodeHtmlEntities(title)
                             if (finalLink.isNotBlank() && cleanTitle.isNotBlank()) {
@@ -457,7 +517,8 @@ class NewsRemoteDataSource @Inject constructor(
                                             title = cleanTitle,
                                             pubDate = pubDate,
                                             source = finalSource,
-                                            timestamp = if (parsedTime > 0L) parsedTime else System.currentTimeMillis(),
+                                            // 0 = no readable date (only kept when dates are optional)
+                                            timestamp = parsedTime,
                                             imageUrl = imageUrl,
                                             originalLink = resolvedDirectLink ?: finalLink
                                         )
@@ -472,7 +533,7 @@ class NewsRemoteDataSource @Inject constructor(
         } catch (_: Exception) {
             // Return articles collected so far
         }
-        return articles
+        return ParsedFeed(articles, itemsSeen)
     }
 
     /**
@@ -481,6 +542,28 @@ class NewsRemoteDataSource @Inject constructor(
      */
     private fun hasOldArchiveYear(url: String, title: String = ""): Boolean =
         NewsFilters.hasOldArchiveYear(url, title)
+
+    /**
+     * All text inside the current element, including text of elements nested in it
+     * (`<title><a href="…">Headline</a></title>`). Leaves the parser on the element's end tag.
+     */
+    private fun innerText(parser: XmlPullParser): String {
+        val text = StringBuilder()
+        var depth = 1
+        try {
+            while (depth > 0) {
+                when (parser.next()) {
+                    XmlPullParser.TEXT -> text.append(parser.text.orEmpty())
+                    XmlPullParser.START_TAG -> depth++
+                    XmlPullParser.END_TAG -> depth--
+                    XmlPullParser.END_DOCUMENT -> depth = 0
+                }
+            }
+        } catch (_: Exception) {
+            // keep what was read
+        }
+        return text.toString()
+    }
 
     private fun safeNextText(parser: XmlPullParser): String {
         return try {
@@ -552,7 +635,9 @@ class NewsRemoteDataSource @Inject constructor(
 
     internal fun parseFeedTimestamp(rawDate: String): Long {
         if (rawDate.isBlank()) return 0L
-        val cleaned = rawDate.trim()
+        // "Wed, 11 Nov 26 00:58:22 +0600": Android's date parser does not reliably accept a
+        // two-digit year, so it is written out in full first
+        val cleaned = TWO_DIGIT_YEAR.replace(rawDate.trim()) { "${it.groupValues[1]} 20${it.groupValues[2]} ${it.groupValues[3]}" }
         val formats = listOf(
             "EEE, dd MMM yyyy HH:mm:ss z",
             "EEE, dd MMM yyyy HH:mm:ss Z",

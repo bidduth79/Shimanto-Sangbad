@@ -25,11 +25,11 @@ interface NewsDao {
     @Query("SELECT * FROM news_articles WHERE category IN (:categories) AND timestamp >= :since ORDER BY timestamp DESC LIMIT :limit")
     fun observeByCategories(categories: List<String>, since: Long, limit: Int = MAX_ROWS): Flow<List<NewsArticle>>
 
-    @Transaction
     /** Newest stories published after [since] (for breaking-news alerts and the widget). */
     @Query("SELECT * FROM news_articles WHERE timestamp >= :since ORDER BY timestamp DESC LIMIT 300")
     suspend fun getRecent(since: Long): List<NewsArticle>
 
+    @Transaction
     @Query("SELECT * FROM news_articles WHERE isSaved = 1 ORDER BY timestamp DESC")
     fun observeSaved(): Flow<List<NewsArticle>>
 
@@ -81,30 +81,52 @@ interface NewsDao {
     suspend fun upsertKeepingBookmarks(articles: List<NewsArticle>) {
         if (articles.isEmpty()) return
         val saved = getSavedLinks().toHashSet()
-        // Keep a picture found earlier (feeds such as Google News never include one)
-        val knownImages = articles.map { it.link }.chunked(500)
-            .flatMap { getImageUrls(it) }
-            .associate { it.link to it.imageUrl }
-        // Some feeds move a story's pubDate forward every time they edit it, which kept old stories
-        // pinned to the top as "minutes ago". A story keeps the time it was first seen with.
-        val knownTimes = articles.map { it.link }.chunked(500)
-            .flatMap { getTimestamps(it) }
-            .associate { it.link to it.timestamp }
+        // What was learned about a story after it was first stored must survive a re-fetch:
+        //  - its picture (feeds such as Google News never include one),
+        //  - its first-seen time (some feeds move pubDate forward on every edit, which kept old
+        //    stories pinned to the top as "minutes ago"),
+        //  - its decoded publisher link and Facebook page name (a re-fetch brings Google's again).
+        val stored = articles.map { it.link }.chunked(500)
+            .flatMap { getStoredParts(it) }
+            .associateBy { it.link }
         val now = System.currentTimeMillis()
         insertAll(articles.map { article ->
+            val old = stored[article.link]
             article.copy(
                 isSaved = article.isSaved || article.link in saved,
-                imageUrl = article.imageUrl ?: knownImages[article.link],
-                timestamp = stableTimestamp(knownTimes[article.link], article.timestamp, now)
+                imageUrl = article.imageUrl ?: old?.imageUrl,
+                timestamp = stableTimestamp(old?.timestamp, article.timestamp, now),
+                originalLink = keptOriginalLink(old?.originalLink, article.originalLink),
+                source = keptSource(old?.source, article.source)
             )
         })
     }
 
-    @Query("SELECT link, timestamp FROM news_articles WHERE link IN (:links)")
-    suspend fun getTimestamps(links: List<String>): List<LinkAndTime>
+    @Query("SELECT link, imageUrl, timestamp, originalLink, source FROM news_articles WHERE link IN (:links)")
+    suspend fun getStoredParts(links: List<String>): List<StoredParts>
 
-    @Query("SELECT link, imageUrl FROM news_articles WHERE link IN (:links) AND imageUrl IS NOT NULL")
-    suspend fun getImageUrls(links: List<String>): List<LinkAndImage>
+    @Query("UPDATE news_articles SET originalLink = :originalLink WHERE link = :link")
+    suspend fun setOriginalLink(link: String, originalLink: String)
+
+    @Query("UPDATE news_articles SET source = :source WHERE link = :link")
+    suspend fun setSource(link: String, source: String)
+
+    /** Stores decoded publisher links (and, for Facebook posts, the page name as source). */
+    @Transaction
+    suspend fun setDecoded(decoded: List<DecodedLink>) {
+        decoded.forEach {
+            setOriginalLink(it.link, it.originalLink)
+            if (it.source != null) setSource(it.link, it.source)
+        }
+    }
+
+    /** One-time repair: Bing rows stored before its time-zone mistake was known (see FeedClock). */
+    @Query("UPDATE news_articles SET timestamp = timestamp + :shiftMillis WHERE source LIKE 'Bing • %' AND timestamp + :shiftMillis <= :now")
+    suspend fun shiftBingTimesForward(shiftMillis: Long, now: Long)
+
+    /** One-time repair: rows of feeds that label local time as UTC. */
+    @Query("UPDATE news_articles SET timestamp = timestamp - :shiftMillis WHERE source IN (:sources)")
+    suspend fun shiftTimesBack(sources: List<String>, shiftMillis: Long)
 
     /**
      * Newest articles in [categories] whose picture hasn't been looked for yet. `imageUrl` is null
@@ -128,9 +150,23 @@ interface NewsDao {
 
 data class LinkAndTitle(val link: String, val title: String)
 
-data class LinkAndImage(val link: String, val imageUrl: String?)
+data class StoredParts(val link: String, val imageUrl: String?, val timestamp: Long, val originalLink: String?, val source: String)
 
-data class LinkAndTime(val link: String, val timestamp: Long)
+data class DecodedLink(val link: String, val originalLink: String, val source: String? = null)
+
+/** A publisher address decoded earlier is not replaced by the Google address a re-fetch brings. */
+fun keptOriginalLink(stored: String?, fetched: String?): String? {
+    val storedIsDecoded = stored != null && !stored.contains("news.google.com")
+    val fetchedIsGoogle = fetched == null || fetched.contains("news.google.com")
+    return if (storedIsDecoded && fetchedIsGoogle) stored else fetched
+}
+
+/** A Facebook page name found earlier is not replaced by the plain "Facebook" of a re-fetch. */
+fun keptSource(stored: String?, fetched: String): String {
+    val storedNamesPage = stored != null && stored.startsWith(com.example.data.NewsFilters.FACEBOOK_SOURCE_PREFIX) &&
+        !com.example.data.NewsFilters.isGenericFacebookSource(stored)
+    return if (storedNamesPage && com.example.data.NewsFilters.isGenericFacebookSource(fetched)) stored!! else fetched
+}
 
 /**
  * The time to store for a story: never later than now (a wrong time zone in a feed must not show

@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -30,7 +31,9 @@ class NewsRepository @Inject constructor(
     private val planner: NewsSearchPlanner,
     private val remote: NewsRemoteDataSource,
     private val cloudBackup: FirebaseManager,
-    private val imageFetcher: ArticleImageFetcher
+    private val imageFetcher: ArticleImageFetcher,
+    private val linkDecoder: GoogleNewsDecoder,
+    private val settingsRepository: com.example.data.settings.SettingsRepository
 ) {
     /** At most this many requests in flight across all regions, so refreshes don't starve the device. */
     private val requestPermits = Semaphore(MAX_PARALLEL_REQUESTS)
@@ -60,6 +63,14 @@ class NewsRepository @Inject constructor(
         customFeeds: List<RssFeedItem>,
         onPriorityWaveDone: () -> Unit = {}
     ) = withContext(Dispatchers.IO) {
+        repairStoredData()
+        SourceHealth.startRound()
+        // New keywords: everything is searched in full again
+        if (keywords != lastSyncedKeywords) {
+            lastDeepAt.clear()
+            lastBingAt.clear()
+            lastSyncedKeywords = keywords
+        }
         dao.deleteOldNews(System.currentTimeMillis() - NewsFilters.MAX_NEWS_AGE_MILLIS)
         supervisorScope {
             launch { syncRegion(NewsRegion.BANGLADESH, keywords) }
@@ -73,17 +84,28 @@ class NewsRepository @Inject constructor(
         }
     }
 
-    /** Lighter refresh for the background worker: Bangladesh tab and social feed only. */
-    suspend fun syncForBackground(keywords: List<String>) = withContext(Dispatchers.IO) {
-        dao.deleteOldNews(System.currentTimeMillis() - NewsFilters.MAX_NEWS_AGE_MILLIS)
-        supervisorScope {
-            launch { syncRegion(NewsRegion.BANGLADESH, keywords) }
-            launch { syncFacebook(keywords) }
-        }
+    /** When the slower-changing parts of each plan last ran (per process); see [NewsSearchPlanner.Depth]. */
+    private val lastDeepAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val lastBingAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    @Volatile private var lastSyncedKeywords: List<String> = emptyList()
+
+    private fun depthFor(key: String, now: Long) = NewsSearchPlanner.Depth(
+        deep = now - (lastDeepAt[key] ?: 0L) >= DEEP_INTERVAL_MILLIS,
+        bing = now - (lastBingAt[key] ?: 0L) >= BING_INTERVAL_MILLIS
+    )
+
+    /** The slower parts count as done only when the round brought something (not while offline). */
+    private fun markDone(key: String, depth: NewsSearchPlanner.Depth, now: Long, gotResults: Boolean) {
+        if (!gotResults) return
+        if (depth.deep) lastDeepAt[key] = now
+        if (depth.bing) lastBingAt[key] = now
     }
 
     suspend fun syncRegion(region: NewsRegion, keywords: List<String>) {
-        val fetched = runAll(planner.plan(region, keywords))
+        val now = System.currentTimeMillis()
+        val depth = depthFor(region.name, now)
+        val fetched = runAll(planner.plan(region, keywords, depth))
+        markDone(region.name, depth, now, fetched.isNotEmpty())
         val cleaned = NewsFilters.cleanRegionResults(
             articles = fetched,
             category = region.category,
@@ -93,13 +115,54 @@ class NewsRepository @Inject constructor(
     }
 
     suspend fun syncFacebook(keywords: List<String>) {
-        val fetched = runAll(planner.planFacebook(keywords))
+        val now = System.currentTimeMillis()
+        val depth = depthFor(FACEBOOK_KEY, now)
+        val raw = runAll(planner.planFacebook(keywords, depth))
+        markDone(FACEBOOK_KEY, depth, now, raw.isNotEmpty())
+        val fetched = raw
             .filter { NewsFilters.isFresh(it) && !NewsFilters.isSports(it) && !NewsFilters.isBlockedSource(it) }
         val cleaned = NewsFilters.onlyAboutKeywords(fetched, keywords)
             .distinctBy { it.link }
             .distinctBy { it.title.trim().lowercase() }
             .map { it.copy(category = NewsFilters.CATEGORY_FACEBOOK) }
         store(cleaned)
+    }
+
+    private val repairLock = kotlinx.coroutines.sync.Mutex()
+
+    /**
+     * One-time repairs of rows stored by earlier versions; runs before the first sync so repaired
+     * and freshly fetched rows never mix. v1: publish times of Bing rows (Pacific time labelled
+     * GMT) and of the feeds that label local time as UTC.
+     */
+    suspend fun repairStoredData() = repairLock.withLock {
+        if (settingsRepository.dataFixVersion() >= DATA_FIX_VERSION) return@withLock
+        withContext(Dispatchers.IO) {
+            val now = System.currentTimeMillis()
+            val pacificBehindUtc = -java.util.TimeZone.getTimeZone("America/Los_Angeles").getOffset(now).toLong()
+            dao.shiftBingTimesForward(pacificBehindUtc, now)
+            val mislabelled = NewsSources.newspaperFeeds.filter { it.localTimeLabelledUtc }
+                .map { "${NewsSources.NEWSPAPER_SOURCE_PREFIX} • ${it.name}" }
+            if (mislabelled.isNotEmpty()) dao.shiftTimesBack(mislabelled, FeedClock.BANGLADESH_OFFSET_MILLIS)
+        }
+        settingsRepository.setDataFixVersion(DATA_FIX_VERSION)
+    }
+
+    /**
+     * Decodes Google links of [articles] (ten per request) and stores the publisher addresses, so
+     * copy/share are instant and Facebook posts show which page they came from.
+     */
+    suspend fun resolveLinks(articles: List<NewsArticle>): Map<String, String> = withContext(Dispatchers.IO) {
+        val google = articles.filter { imageFetcher.needsGoogleDecode(it) }
+        if (google.isEmpty()) return@withContext emptyMap()
+        val decoded = linkDecoder.resolveAll(google.map { it.originalLink ?: it.link })
+        dao.setDecoded(google.mapNotNull { article ->
+            val target = decoded[article.originalLink ?: article.link]?.takeIf { !linkDecoder.isGoogleOwned(it) }
+                ?: return@mapNotNull null
+            val pageSource = if (article.category == NewsFilters.CATEGORY_FACEBOOK) FacebookPages.sourceFor(target) else null
+            com.example.data.local.DecodedLink(article.link, target, pageSource)
+        })
+        decoded
     }
 
     suspend fun syncCustomFeeds(feeds: List<RssFeedItem>) {
@@ -156,7 +219,11 @@ class NewsRepository @Inject constructor(
         // 2) Network: direct publisher pages freely; Google links only a few per run, because
         //    their decoding is rate-limited and the same decoding powers "copy link" and sharing
         val (google, direct) = missing.filter { it.link !in borrowed }.partition { imageFetcher.needsGoogleDecode(it) }
-        val queue = direct + google.take(MAX_GOOGLE_IMAGE_LOOKUPS)
+        val (facebook, googleNews) = google.partition { it.category == NewsFilters.CATEGORY_FACEBOOK }
+        val toDecode = googleNews.take(MAX_GOOGLE_NEWS_DECODES) + facebook.take(MAX_FACEBOOK_DECODES)
+        val decoded = resolveLinks(toDecode)
+        // Only links that were decoded can be looked up now; the rest are tried on a later refresh
+        val queue = direct + toDecode.filter { (it.originalLink ?: it.link) in decoded }
         val permits = Semaphore(IMAGE_PARALLELISM)
         val started = System.currentTimeMillis()
         android.util.Log.d(IMAGE_TAG, "looking for pictures: ${queue.size} articles")
@@ -255,6 +322,13 @@ class NewsRepository @Inject constructor(
         const val IMAGE_PARALLELISM = 4
         const val IMAGE_WRITE_BATCH = 12
         const val IMAGE_BATCH_LIMIT = 250
-        const val MAX_GOOGLE_IMAGE_LOOKUPS = 25
+        /** Google links decoded per run (ten per request): news first, then Facebook posts. */
+        const val MAX_GOOGLE_NEWS_DECODES = 30
+        const val MAX_FACEBOOK_DECODES = 20
+        const val FACEBOOK_KEY = "facebook"
+        /** Whole-day searches change slowly; the newest-headlines searches run on every refresh. */
+        const val DEEP_INTERVAL_MILLIS = 30L * 60 * 1000
+        const val BING_INTERVAL_MILLIS = 9L * 60 * 1000
+        const val DATA_FIX_VERSION = 1
     }
 }

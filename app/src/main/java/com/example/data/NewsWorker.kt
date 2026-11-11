@@ -28,7 +28,10 @@ class NewsWorker @AssistedInject constructor(
         if (System.currentTimeMillis() - settingsRepository.lastSyncAt() < SKIP_IF_SYNCED_WITHIN_MILLIS) {
             Log.d(TAG, "Skipped: app refreshed recently")
         } else {
-            newsRepository.syncForBackground(settingsRepository.current().keywords)
+            val settings = settingsRepository.current()
+            // Every tab and the user's own feeds, so nothing waits for the app to be opened
+            newsRepository.syncAll(settings.keywords, settings.rssFeeds)
+            settingsRepository.setLastSyncAt(System.currentTimeMillis())
             Log.d(TAG, "Background news sync finished")
         }
         runCatching { newsAlerts.checkAndNotify() }

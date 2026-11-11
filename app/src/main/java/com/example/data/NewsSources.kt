@@ -9,7 +9,12 @@ enum class NewsRegion { BANGLADESH, INDIA, MYANMAR, INTERNATIONAL }
 data class NewspaperFeed(
     val name: String,
     val url: String,
-    val region: NewsRegion
+    val region: NewsRegion,
+    /**
+     * The site writes local time but labels it UTC/GMT (checked against the clock on 2026-11-09),
+     * so its items would look hours in the future. [FeedClock] moves them back.
+     */
+    val localTimeLabelledUtc: Boolean = false
 )
 
 object NewsSources {
@@ -62,13 +67,13 @@ object NewsSources {
         NewspaperFeed("Chattagram News", "https://chattogramnews.com/feed", NewsRegion.BANGLADESH),
         NewspaperFeed("কক্সবাজার নিউজ", "https://www.coxsbazarnews.com/feed", NewsRegion.BANGLADESH),
         NewspaperFeed("চট্টগ্রাম বাংলানিউজ", "https://ctgbanglanews24.com/feed", NewsRegion.BANGLADESH),
-        NewspaperFeed("ডেইলি বাংলাদেশ", "https://www.daily-bangladesh.com/rss", NewsRegion.BANGLADESH),
+        NewspaperFeed("ডেইলি বাংলাদেশ", "https://www.daily-bangladesh.com/rss", NewsRegion.BANGLADESH, localTimeLabelledUtc = true),
         NewspaperFeed("আমার দেশ", "https://www.dailyamardesh.com/feed", NewsRegion.BANGLADESH),
         NewspaperFeed("ইনকিলাব", "https://dailyinqilab.com/rss/rss.xml", NewsRegion.BANGLADESH),
         NewspaperFeed("জনকণ্ঠ", "https://www.dailyjanakantha.com/rss/rss.xml", NewsRegion.BANGLADESH),
         NewspaperFeed("dailynabochatona.com", "https://dailynabochatona.com/feed", NewsRegion.BANGLADESH),
         NewspaperFeed("Daily Sylhet", "https://dailysylhet.com/feed/", NewsRegion.BANGLADESH),
-        NewspaperFeed("ভোরের পাতা", "https://www.dailyvorerpata.com/rss", NewsRegion.BANGLADESH),
+        NewspaperFeed("ভোরের পাতা", "https://www.dailyvorerpata.com/rss", NewsRegion.BANGLADESH, localTimeLabelledUtc = true),
         NewspaperFeed("Dainik Sylhet", "https://dainiksylhet.com/feed/", NewsRegion.BANGLADESH),
         NewspaperFeed("দেশেবিদেশে", "https://www.deshebideshe.com/feed/", NewsRegion.INTERNATIONAL),
         NewspaperFeed("দেশের সংবাদ", "https://deshersangbad.com/feed/", NewsRegion.BANGLADESH),
@@ -80,14 +85,14 @@ object NewsSources {
         NewspaperFeed("gnewsbd24.com", "https://gnewsbd24.com/feed/", NewsRegion.BANGLADESH),
         NewspaperFeed("কালবেলা", "https://www.kalbela.com/rss/latest-rss.xml", NewsRegion.BANGLADESH),
         NewspaperFeed("খবরপত্র", "https://khoborpatrabd.com/feed", NewsRegion.BANGLADESH),
-        NewspaperFeed("খোলা কাগজ", "https://www.kholakagojbd.com/rss", NewsRegion.BANGLADESH),
+        NewspaperFeed("খোলা কাগজ", "https://www.kholakagojbd.com/rss", NewsRegion.BANGLADESH, localTimeLabelledUtc = true),
         NewspaperFeed("খুলনাঞ্চল", "https://khulnanchal.com/?feed=rss2", NewsRegion.BANGLADESH),
         NewspaperFeed("লেটেস্ট বিডি নিউজ", "https://www.latestbdnews.com/feed/", NewsRegion.BANGLADESH),
         NewspaperFeed("Malay News Bangla", "https://www.malay.news/feed/", NewsRegion.INTERNATIONAL),
         NewspaperFeed("নিউজ ২৪", "https://www.mtnews24.com/feed/", NewsRegion.BANGLADESH),
         NewspaperFeed("Nagorik TV", "https://nagorik.com/feed/", NewsRegion.BANGLADESH),
-        NewspaperFeed("newsbangla24.com", "https://www.newsbangla24.com/rss.xml", NewsRegion.BANGLADESH),
-        NewspaperFeed("ডেইলি অবজার্ভার", "https://www.observerbd.com/rss", NewsRegion.BANGLADESH),
+        NewspaperFeed("newsbangla24.com", "https://www.newsbangla24.com/rss.xml", NewsRegion.BANGLADESH, localTimeLabelledUtc = true),
+        NewspaperFeed("ডেইলি অবজার্ভার", "https://www.observerbd.com/rss", NewsRegion.BANGLADESH, localTimeLabelledUtc = true),
         NewspaperFeed("দৈনিক অধিকার", "https://odhikar.news/feed/", NewsRegion.BANGLADESH),
         NewspaperFeed("onabil.net", "https://onabil.net/?feed=rss2", NewsRegion.BANGLADESH),
         NewspaperFeed("অর্থসংবাদ", "https://orthosongbad.com/feed/", NewsRegion.BANGLADESH),
@@ -103,7 +108,7 @@ object NewsSources {
         NewspaperFeed("এসএ টিভি", "https://www.satv.tv/feed/", NewsRegion.BANGLADESH),
         NewspaperFeed("শেয়ার বিজ", "https://www.sharebiz.net/rss/rss.xml", NewsRegion.BANGLADESH),
         NewspaperFeed("শেয়ার নিউজ ২৪", "https://sharenews24.com/rss/rss.xml", NewsRegion.BANGLADESH),
-        NewspaperFeed("সময়ের আলো", "https://www.shomoyeralo.com/rss", NewsRegion.BANGLADESH),
+        NewspaperFeed("সময়ের আলো", "https://www.shomoyeralo.com/rss", NewsRegion.BANGLADESH, localTimeLabelledUtc = true),
         NewspaperFeed("সুপ্রভাত", "https://suprobhat.com/feed/", NewsRegion.BANGLADESH),
         NewspaperFeed("সুরমা টাইমস", "https://surmatimes.com/feed", NewsRegion.BANGLADESH),
         NewspaperFeed("The Bengali Times", "https://www.thebengalitimes.com/feed/", NewsRegion.INTERNATIONAL),
@@ -121,8 +126,13 @@ object NewsSources {
         NewspaperFeed("Kolkata24x7", "https://kolkata24x7.in/feed/", NewsRegion.INDIA),
         NewspaperFeed("Northeast Now", "https://nenow.in/feed", NewsRegion.INDIA),
         NewspaperFeed("The Hindu", "https://www.thehindu.com/news/national/feeder/default.rss", NewsRegion.INDIA),
-        // Myanmar
+        // Myanmar (each reachable from the app and carrying items on 2026-11-10; Mizzima and
+        // Frontier Myanmar refuse feed readers, so they come only through the Google search)
         NewspaperFeed("The Irrawaddy", "https://www.irrawaddy.com/feed", NewsRegion.MYANMAR),
+        NewspaperFeed("Myanmar Now", "https://myanmar-now.org/en/feed/", NewsRegion.MYANMAR),
+        NewspaperFeed("DVB English", "https://english.dvb.no/feed/", NewsRegion.MYANMAR),
+        NewspaperFeed("Global New Light of Myanmar", "https://www.gnlm.com.mm/feed/", NewsRegion.MYANMAR),
+        NewspaperFeed("RFA Myanmar", "https://www.rfa.org/english/news/myanmar/rss2.xml", NewsRegion.MYANMAR),
         // International
         NewspaperFeed("Al Jazeera", "https://www.aljazeera.com/xml/rss/all.xml", NewsRegion.INTERNATIONAL),
         NewspaperFeed("The Guardian", "https://www.theguardian.com/international/rss", NewsRegion.INTERNATIONAL)

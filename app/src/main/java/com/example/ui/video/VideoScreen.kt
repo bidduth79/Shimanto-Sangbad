@@ -196,7 +196,11 @@ fun VideoList(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        TimeFilterChip(maxAgeHours = maxAgeHours, onSelect = onSelectMaxAge)
+                        TimeFilterChip(
+                            maxAgeHours = maxAgeHours,
+                            onSelect = onSelectMaxAge,
+                            allLabel = stringResource(R.string.video_time_all)
+                        )
                         val chips = if (region == null) listOf(
                             VideoFilter.ALL to (R.string.filter_all to counts.all),
                             VideoFilter.UNREAD to (R.string.video_filter_unwatched to counts.unread),

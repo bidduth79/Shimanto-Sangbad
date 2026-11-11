@@ -10,107 +10,177 @@ typealias SearchTask = suspend () -> List<NewsArticle>
 /**
  * Decides WHICH requests to make for each country tab (search engine, edition, query wording).
  * Executing them, filtering and storing is [NewsRepository]'s job.
+ *
+ * Every refresh asks Google for the newest headlines: the keyword in the headline ([SearchQueries]),
+ * last three hours, a handful of requests. The slower-changing parts ([Depth]) — the whole day's
+ * results, plain keyword searches and Bing — are added only every so often.
  */
 @Singleton
 class NewsSearchPlanner @Inject constructor(
     private val remote: NewsRemoteDataSource
 ) {
 
-    fun plan(region: NewsRegion, keywords: List<String>): List<SearchTask> = when (region) {
-        NewsRegion.BANGLADESH -> planBangladesh(keywords)
-        NewsRegion.INDIA -> planIndia(keywords)
-        NewsRegion.MYANMAR -> planMyanmar(keywords)
-        NewsRegion.INTERNATIONAL -> planInternational(keywords)
+    /** Which of the slower-changing parts of a plan to include this time. */
+    data class Depth(val deep: Boolean = true, val bing: Boolean = true)
+
+    fun plan(region: NewsRegion, keywords: List<String>, depth: Depth = Depth()): List<SearchTask> = when (region) {
+        NewsRegion.BANGLADESH -> planBangladesh(keywords, depth)
+        NewsRegion.INDIA -> planIndia(keywords, depth)
+        NewsRegion.MYANMAR -> planMyanmar(keywords, depth)
+        NewsRegion.INTERNATIONAL -> planInternational(keywords, depth)
     }
 
-    fun planFacebook(keywords: List<String>): List<SearchTask> =
-        keywords.map { keyword -> { remote.fetchFacebookNews(keyword) } }
+    /** Public Facebook posts with a keyword in their text's first line (Google indexes it as the title). */
+    fun planFacebook(keywords: List<String>, depth: Depth = Depth()): List<SearchTask> = buildList {
+        // "border" alone would bring posts from all over the world
+        val terms = SearchQueries.bengaliTerms(keywords) +
+            SearchQueries.englishTerms(keywords).filter { !KeywordMatcher.isGenericEnglishTerm(it.text) }
+        terms.chunked(TERMS_PER_FRESH_QUERY).forEach { group ->
+            add { remote.fetchFacebookPosts(SearchQueries.anyInTitle(group), FRESH_WINDOW, group[0].keyword) }
+        }
+        if (depth.deep) {
+            for (term in terms) {
+                add { remote.fetchFacebookPosts(SearchQueries.inTitle(term.text), DAY_WINDOW, term.keyword) }
+            }
+        }
+    }
 
     fun planCustomFeeds(feeds: List<RssFeedItem>): List<SearchTask> =
         feeds.map { feed -> { remote.fetchCustomRssFeed(feed) } }
 
-    /** Google (bn + en editions) and Bing, plus Bangladeshi papers' own feeds. */
-    private fun planBangladesh(keywords: List<String>): List<SearchTask> = buildList {
+    /** Bangladeshi papers' own feeds, Google's Bangladesh editions (bn + en) and Bing. */
+    private fun planBangladesh(keywords: List<String>, depth: Depth): List<SearchTask> = buildList {
         add { remote.fetchNewspaperFeeds(NewsRegion.BANGLADESH, keywords) }
-        for (topic in keywords) {
-            add { google(topic, "$topic $NO_FACEBOOK", Edition.BD_BN.takeIf { isBengali(topic) } ?: Edition.BD_EN) }
+        val bengali = SearchQueries.bengaliTerms(keywords)
+        val english = SearchQueries.englishTerms(keywords)
+
+        bengali.chunked(TERMS_PER_FRESH_QUERY).forEach { group ->
+            add { google(group[0].keyword, "${SearchQueries.anyInTitle(group)} $NO_FACEBOOK", Edition.BD_BN, FRESH_WINDOW) }
         }
-        for (keyword in keywords) {
-            if (isBengali(keyword)) {
-                addBing(keyword, query = keyword, bingMarket = "en-US")
-                for (en in remote.getEnglishSearchVariants(keyword)) {
-                    add { google(keyword, "$en $NO_FACEBOOK", Edition.BD_EN) }
-                    addBing(keyword, query = en, bingMarket = "en-US")
+        english.chunked(TERMS_PER_FRESH_QUERY).forEach { group ->
+            add { google(group[0].keyword, "${SearchQueries.english(group, global = false)} $NO_FACEBOOK", Edition.BD_EN, FRESH_WINDOW) }
+        }
+        if (depth.deep) {
+            // The rest of the day, one term per search (each search is capped at 100 results)
+            for (term in bengali) {
+                val query = "${SearchQueries.inTitle(term.text)} $NO_FACEBOOK"
+                add { google(term.keyword, query, Edition.BD_BN, HALF_DAY_WINDOW) }
+                add { google(term.keyword, query, Edition.BD_BN, DAY_WINDOW) }
+            }
+            for (term in english) {
+                add { google(term.keyword, "${SearchQueries.english(listOf(term), global = false)} $NO_FACEBOOK", Edition.BD_EN, DAY_WINDOW) }
+            }
+            // Plain keyword searches still find headlines that word it differently
+            for (keyword in keywords) {
+                add { google(keyword, "$keyword $NO_FACEBOOK", if (isBengali(keyword)) Edition.BD_BN else Edition.BD_EN, DAY_WINDOW) }
+            }
+        }
+        if (depth.bing) {
+            for (keyword in keywords) {
+                if (isBengali(keyword)) {
+                    addBing(keyword, query = keyword, bingMarket = "en-US")
+                    for (en in remote.getEnglishSearchVariants(keyword)) addBing(keyword, query = en, bingMarket = "en-US")
+                } else {
+                    addBing(keyword, query = "$keyword Bangladesh", bingMarket = "en-US")
                 }
-            } else {
-                addBing(keyword, query = "$keyword Bangladesh", bingMarket = "en-US")
             }
         }
     }
 
-    /** Indian editions of Google News in Bengali and English, Bing India, plus Indian papers' feeds. */
-    private fun planIndia(keywords: List<String>): List<SearchTask> = buildList {
+    /** Indian papers' feeds, Google's India editions (bn + en) and Bing India. */
+    private fun planIndia(keywords: List<String>, depth: Depth): List<SearchTask> = buildList {
         if (keywords.isEmpty()) return@buildList
         add { remote.fetchNewspaperFeeds(NewsRegion.INDIA, keywords) }
-        for (keyword in keywords) {
-            if (isBengali(keyword)) {
-                add { google(keyword, "$keyword $NOT_BD_MEDIA_IN", Edition.IN_BN) }
-                add { google(keyword, "$keyword ($INDIA_CONTEXT) $NOT_BD_MEDIA_IN", Edition.IN_BN) }
-                add { remote.fetchBingNews("$keyword ভারত", market = "en-IN", matchedTag = keyword) }
-                for (en in remote.getEnglishSearchVariants(keyword)) {
-                    add { google(keyword, "$en $NOT_BD_MEDIA_IN", Edition.IN_EN) }
-                    addBing(keyword, query = "$en India", bingMarket = "en-IN")
+        val bengali = SearchQueries.bengaliTerms(keywords)
+        val english = SearchQueries.englishTerms(keywords)
+
+        bengali.chunked(TERMS_PER_FRESH_QUERY).forEach { group ->
+            add { google(group[0].keyword, "${SearchQueries.anyInTitle(group)} $NOT_BD_MEDIA_IN", Edition.IN_BN, FRESH_WINDOW) }
+        }
+        english.chunked(TERMS_PER_FRESH_QUERY).forEach { group ->
+            add { google(group[0].keyword, "${SearchQueries.english(group, global = false)} $NOT_BD_MEDIA_IN", Edition.IN_EN, FRESH_WINDOW) }
+        }
+        if (depth.deep) {
+            for (term in bengali) {
+                add { google(term.keyword, "${SearchQueries.inTitle(term.text)} $NOT_BD_MEDIA_IN", Edition.IN_BN, DAY_WINDOW) }
+            }
+            for (term in english) {
+                add { google(term.keyword, "${SearchQueries.english(listOf(term), global = false)} $NOT_BD_MEDIA_IN", Edition.IN_EN, DAY_WINDOW) }
+            }
+            for (keyword in keywords.filter { isBengali(it) }) {
+                add { google(keyword, "$keyword ($INDIA_CONTEXT) $NOT_BD_MEDIA_IN", Edition.IN_BN, DAY_WINDOW) }
+            }
+        }
+        if (depth.bing) {
+            for (keyword in keywords) {
+                if (isBengali(keyword)) {
+                    add { remote.fetchBingNews("$keyword ভারত", market = "en-IN", matchedTag = keyword) }
+                    for (en in remote.getEnglishSearchVariants(keyword)) addBing(keyword, query = "$en India", bingMarket = "en-IN")
+                } else {
+                    addBing(keyword, query = "$keyword India", bingMarket = "en-IN")
                 }
-            } else {
-                add { google(keyword, "$keyword $NOT_BD_MEDIA_IN", Edition.IN_EN) }
-                add { google(keyword, "$keyword $NOT_BD_MEDIA_IN", Edition.IN_BN) }
-                addBing(keyword, query = "$keyword India", bingMarket = "en-IN")
             }
         }
     }
 
     /**
-     * Myanmar outlets via Google plus The Irrawaddy feed. Most Myanmar-border stories reach the tab
-     * through the Bangladesh and international searches (the tab is chosen by publisher); dozens of
-     * extra Rakhine/Arakan queries kept none of their results, so only one per keyword remains.
+     * Myanmar outlets' feeds plus one Google search limited to Myanmar outlets. Most Myanmar-border
+     * stories reach the app through the Bangladesh and international searches (the tab is chosen by
+     * publisher).
      */
-    private fun planMyanmar(keywords: List<String>): List<SearchTask> = buildList {
+    private fun planMyanmar(keywords: List<String>, depth: Depth): List<SearchTask> = buildList {
         if (keywords.isEmpty()) return@buildList
-        add { google("মিয়ানমার", MYANMAR_OUTLETS_QUERY, Edition.US_EN) }
+        add { google("মিয়ানমার", MYANMAR_OUTLETS_QUERY, Edition.US_EN, DAY_WINDOW) }
         add { remote.fetchNewspaperFeeds(NewsRegion.MYANMAR, keywords) }
-        for (keyword in keywords) {
-            val query = remote.getMyanmarSearchVariants(keyword).firstOrNull() ?: continue
-            add { google(keyword, "$query $NOT_BD_MEDIA_GLOBAL", Edition.US_EN) }
+        if (depth.deep) {
+            for (keyword in keywords) {
+                val query = remote.getMyanmarSearchVariants(keyword).firstOrNull() ?: continue
+                add { google(keyword, "$query $NOT_BD_MEDIA_GLOBAL", Edition.US_EN, DAY_WINDOW) }
+            }
         }
     }
 
-    /** Google US/UK editions, global engines, Bengali-language world services, plus world outlets' feeds. */
-    private fun planInternational(keywords: List<String>): List<SearchTask> = buildList {
+    /** World outlets' feeds, Google's US/UK editions and Bing. */
+    private fun planInternational(keywords: List<String>, depth: Depth): List<SearchTask> = buildList {
         if (keywords.isEmpty()) return@buildList
         add { remote.fetchNewspaperFeeds(NewsRegion.INTERNATIONAL, keywords) }
-        for (keyword in keywords) {
-            if (isBengali(keyword)) {
-                add { google(keyword, "$keyword $NOT_BD_MEDIA_GLOBAL", Edition.US_BN) }
-                add { remote.fetchBingNews(keyword, market = "en-US", matchedTag = keyword) }
+        val bengali = SearchQueries.bengaliTerms(keywords)
+        val english = SearchQueries.englishTerms(keywords)
+
+        english.chunked(TERMS_PER_FRESH_QUERY).forEach { group ->
+            val query = "${SearchQueries.english(group, global = true)} $NOT_BD_MEDIA_GLOBAL"
+            add { google(group[0].keyword, query, Edition.US_EN, FRESH_WINDOW) }
+            add { google(group[0].keyword, query, Edition.GB_EN, FRESH_WINDOW) }
+        }
+        if (depth.deep) {
+            for (term in english) {
+                val query = "${SearchQueries.english(listOf(term), global = true)} $NOT_BD_MEDIA_GLOBAL"
+                add { google(term.keyword, query, Edition.US_EN, DAY_WINDOW) }
+                add { google(term.keyword, query, Edition.GB_EN, DAY_WINDOW) }
             }
-            for (query in remote.getEnglishSearchVariants(keyword)) {
-                add { google(keyword, "$query $NOT_BD_MEDIA_GLOBAL", Edition.US_EN) }
-                add { google(keyword, "$query $NOT_BD_MEDIA_GLOBAL", Edition.GB_EN) }
-                addBing(keyword, query = query, bingMarket = "en-US")
+            // Bengali-language outlets abroad
+            for (term in bengali) {
+                add { google(term.keyword, "${SearchQueries.inTitle(term.text)} $NOT_BD_MEDIA_GLOBAL", Edition.US_BN, DAY_WINDOW) }
+            }
+        }
+        if (depth.bing) {
+            for (keyword in keywords) {
+                if (isBengali(keyword)) add { remote.fetchBingNews(keyword, market = "en-US", matchedTag = keyword) }
+                for (query in remote.getEnglishSearchVariants(keyword)) addBing(keyword, query = query, bingMarket = "en-US")
             }
         }
     }
 
     /**
-     * Bing News for one query. Yahoo, DuckDuckGo and Reddit were dropped: measured over a full
-     * refresh they returned ~0 headlines about the keywords while costing about half of all requests.
+     * Bing News for one query (its newest dozen stories). Yahoo, DuckDuckGo and Reddit were dropped:
+     * measured over a full refresh they returned ~0 headlines about the keywords.
      */
     private fun MutableList<SearchTask>.addBing(keyword: String, query: String, bingMarket: String) {
         add { remote.fetchBingNews(query, market = bingMarket, matchedTag = keyword) }
     }
 
-    private suspend fun google(keyword: String, query: String, edition: Edition): List<NewsArticle> =
-        remote.fetchNews(query, hl = edition.hl, gl = edition.gl, ceid = edition.ceid, whenWindow = "1d")
+    private suspend fun google(keyword: String, query: String, edition: Edition, window: String): List<NewsArticle> =
+        remote.fetchNews(query, hl = edition.hl, gl = edition.gl, ceid = edition.ceid, whenWindow = window)
             .map { it.copy(matchedKeyword = keyword) }
 
     private enum class Edition(val hl: String, val gl: String, val ceid: String) {
@@ -124,6 +194,13 @@ class NewsSearchPlanner @Inject constructor(
     }
 
     private companion object {
+        /** Newest headlines, asked on every refresh. */
+        const val FRESH_WINDOW = "3h"
+        const val HALF_DAY_WINDOW = "8h"
+        const val DAY_WINDOW = "1d"
+        /** Terms OR-ed into one newest-headlines search; more would risk Google's 100-result cap. */
+        const val TERMS_PER_FRESH_QUERY = 2
+
         const val NO_FACEBOOK = "-site:facebook.com -site:fb.com"
         const val NOT_BD_MEDIA_IN = "-site:.bd -site:facebook.com -site:fb.com -site:prothomalo.com " +
             "-site:jugantor.com -site:kalerkantho.com -site:dhakapost.com -site:somoynews.tv " +

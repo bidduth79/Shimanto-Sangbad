@@ -20,6 +20,7 @@ class SimantoApplication : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        com.example.data.FeedClock.attach(this)
         scheduleBackgroundNewsSync(this)
     }
 }

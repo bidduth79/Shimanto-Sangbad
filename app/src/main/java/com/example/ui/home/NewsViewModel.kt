@@ -104,6 +104,7 @@ class NewsViewModel @Inject constructor(
             newsRepository.restoreBookmarksFromCloud()
             // Let cached news reach the screen before the network work starts competing for CPU
             regionalNews.first()
+            runCatching { newsRepository.repairStoredData() }
             newsRepository.pruneOffTopic(settingsRepository.current().keywords)
             newsRepository.backfillRegions(settingsRepository.regionRulesVersion())
             settingsRepository.setRegionRulesVersion(NewsRegionClassifier.VERSION)
@@ -199,9 +200,7 @@ class NewsViewModel @Inject constructor(
 
     /** Decodes the first few links in the background so copy/share on them is instant. */
     private suspend fun preResolveTopLinks() {
-        uiState.value.visibleArticles.take(PRE_RESOLVE_COUNT).forEach {
-            runCatching { linkDecoder.resolve(it.originalLink ?: it.link) }
-        }
+        newsRepository.resolveLinks(uiState.value.visibleArticles.take(PRE_RESOLVE_COUNT))
     }
 
     private companion object {

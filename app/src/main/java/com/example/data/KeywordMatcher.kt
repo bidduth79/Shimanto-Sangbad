@@ -40,6 +40,21 @@ object KeywordMatcher {
         return listOf(clean) + aliases
     }
 
+    /**
+     * True for a single generic English word ("border") or a short Latin acronym ("BGB", "BSF"):
+     * in a non-Bengali headline such a term only counts together with South-Asia context.
+     */
+    fun needsRegionContext(term: String): Boolean = isGenericEnglishTerm(term) || isShortAcronym(term)
+
+    /** "border", "smuggl", "infiltrat": everyday words that mean nothing without a place. */
+    fun isGenericEnglishTerm(term: String): Boolean = term.trim().lowercase() in GENERIC_ENGLISH_TERMS
+
+    /** "BGB", "BSF": up to four Latin letters, which other countries use for other things. */
+    fun isShortAcronym(term: String): Boolean {
+        val word = term.trim().lowercase()
+        return word.isNotEmpty() && word.length <= 4 && word.all { it in 'a'..'z' } && word !in GENERIC_ENGLISH_TERMS
+    }
+
     /** A keyword or alias, pre-split and lower-cased once instead of once per headline. */
     private class Term(val words: List<String>, val needsRegionContext: Boolean)
     private class CompiledKeyword(val name: String, val terms: List<Term>)
@@ -54,10 +69,7 @@ object KeywordMatcher {
             CompiledKeyword(keyword, termsFor(keyword).mapNotNull { term ->
                 val words = term.lowercase().split(' ').filter { it.isNotBlank() }
                 if (words.isEmpty()) return@mapNotNull null
-                val single = words.singleOrNull()
-                val isGenericEnglish = single != null && single in GENERIC_ENGLISH_TERMS
-                val isShortAcronym = single != null && single.length <= 4 && single.all { it in 'a'..'z' }
-                Term(words, needsRegionContext = isGenericEnglish || isShortAcronym)
+                Term(words, needsRegionContext = needsRegionContext(term))
             })
         }
         cache = keywords to compiled

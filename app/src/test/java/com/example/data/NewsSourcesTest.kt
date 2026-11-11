@@ -48,6 +48,15 @@ class NewsSourcesTest {
     }
 
     @Test
+    fun parseFeedTimestamp_twoDigitYearIsWrittenOutBeforeParsing() {
+        val remote = NewsRemoteDataSource(okhttp3.OkHttpClient())
+        // The Daily Star's form; 2026-11-10 18:58:22 UTC
+        assertEquals(1_794_337_102_000L, remote.parseFeedTimestamp("Wed, 11 Nov 26 00:58:22 +0600"))
+        // a four-digit year is left alone
+        assertEquals(expectedMillis, remote.parseFeedTimestamp("Sun, 08 Nov 2026 07:14:21 +0600"))
+    }
+
+    @Test
     fun builtInSources_haveNoDuplicates() {
         val urls = NewsSources.newspaperFeeds.map { it.url }
         assertTrue(urls.size == urls.toSet().size)

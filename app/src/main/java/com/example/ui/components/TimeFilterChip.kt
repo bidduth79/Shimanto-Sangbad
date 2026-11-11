@@ -52,7 +52,13 @@ fun bengaliDigits(n: Int): String = n.toString().map { if (it in '0'..'9') '০'
  * keyword button, so a narrowed list is never mistaken for everything.
  */
 @Composable
-fun TimeFilterChip(maxAgeHours: Int?, onSelect: (Int?) -> Unit, modifier: Modifier = Modifier) {
+fun TimeFilterChip(
+    maxAgeHours: Int?,
+    onSelect: (Int?) -> Unit,
+    modifier: Modifier = Modifier,
+    /** Label of the "no limit" choice: news is kept 36 hours, videos 7 days. */
+    allLabel: String = stringResource(R.string.time_filter_all)
+) {
     var expanded by remember { mutableStateOf(false) }
     val scheme = MaterialTheme.colorScheme
     val active = maxAgeHours != null
@@ -114,7 +120,7 @@ fun TimeFilterChip(maxAgeHours: Int?, onSelect: (Int?) -> Unit, modifier: Modifi
             HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.6f), modifier = Modifier.padding(vertical = 4.dp))
             TimeFilterOptions.forEach { hours ->
                 TimeOptionRow(
-                    label = if (hours == null) stringResource(R.string.time_filter_all)
+                    label = if (hours == null) allLabel
                     else stringResource(R.string.time_filter_last_hours, bengaliDigits(hours)),
                     icon = if (hours == null) Icons.Default.AllInclusive else Icons.Default.Schedule,
                     selected = hours == maxAgeHours,

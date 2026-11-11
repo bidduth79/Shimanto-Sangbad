@@ -38,7 +38,10 @@ data class SettingsUiState(
     val lastSeenVideoAt: Long = 0L,
     val alertsEnabled: Boolean = true,
     val translateHeadlines: Boolean = true,
-    val alertKeywords: List<String> = emptyList()
+    val alertKeywords: List<String> = emptyList(),
+    /** What every news source last did (see SourceHealth). */
+    val sourceStatuses: List<com.example.data.SourceHealth.Status> = emptyList(),
+    val lastRefreshRoundAt: Long = 0L
 ) {
     val hasYoutubeApiKey: Boolean get() = youtubeApiKey.isNotBlank()
 }
@@ -56,8 +59,10 @@ class SettingsViewModel @Inject constructor(
     val uiState: StateFlow<SettingsUiState> = combine(
         settingsRepository.settings,
         settingsRepository.youtubeApiKey,
-        youTubeRepository.quotaUsedToday
-    ) { s, apiKey, quotaUsed ->
+        youTubeRepository.quotaUsedToday,
+        com.example.data.SourceHealth.statuses,
+        com.example.data.SourceHealth.lastRoundAt
+    ) { s, apiKey, quotaUsed, sources, lastRoundAt ->
         val customChannels = s.youtubeChannelIds.split(",").map { it.trim() }.filter { it.isNotEmpty() }
         SettingsUiState(
             keywords = s.keywords,
@@ -74,7 +79,9 @@ class SettingsViewModel @Inject constructor(
             lastSeenVideoAt = s.lastSeenVideoAt,
             alertsEnabled = s.alertsEnabled,
             translateHeadlines = s.translateHeadlines,
-            alertKeywords = s.alertKeywords
+            alertKeywords = s.alertKeywords,
+            sourceStatuses = sources.values.toList(),
+            lastRefreshRoundAt = lastRoundAt
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, SettingsUiState())
 

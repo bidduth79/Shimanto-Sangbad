@@ -138,6 +138,18 @@ object NewsFilters {
     const val CATEGORY_MYANMAR = "myanmar"
     const val CATEGORY_INTERNATIONAL = "international"
     const val CATEGORY_FACEBOOK = "facebook"
+
+    /**
+     * Source of a Facebook post until its page is known; "Facebook • <page>" once it is.
+     * Older versions stored the generic form as "Facebook • Facebook".
+     */
+    const val FACEBOOK_SOURCE = "Facebook"
+    const val FACEBOOK_SOURCE_PREFIX = "Facebook • "
+    const val LEGACY_FACEBOOK_SOURCE = "Facebook • Facebook"
+
+    /** True while a Facebook post's source does not name its page yet. */
+    fun isGenericFacebookSource(source: String): Boolean =
+        source == FACEBOOK_SOURCE || source == LEGACY_FACEBOOK_SOURCE
     const val CATEGORY_RSS = "rss"
 
     val NEWS_CATEGORIES = listOf(
