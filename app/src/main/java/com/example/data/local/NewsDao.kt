@@ -108,6 +108,17 @@ interface NewsDao {
     @Query("UPDATE news_articles SET originalLink = :originalLink WHERE link = :link")
     suspend fun setOriginalLink(link: String, originalLink: String)
 
+    @Query("SELECT link, title, source FROM news_articles")
+    suspend fun getAllTitles(): List<LinkTitleSource>
+
+    @Query("UPDATE news_articles SET title = :title WHERE link = :link")
+    suspend fun setTitle(link: String, title: String)
+
+    @Transaction
+    suspend fun setTitles(titles: Map<String, String>) {
+        titles.forEach { (link, title) -> setTitle(link, title) }
+    }
+
     @Query("UPDATE news_articles SET source = :source WHERE link = :link")
     suspend fun setSource(link: String, source: String)
 
@@ -151,6 +162,8 @@ interface NewsDao {
 data class LinkAndTitle(val link: String, val title: String)
 
 data class StoredParts(val link: String, val imageUrl: String?, val timestamp: Long, val originalLink: String?, val source: String)
+
+data class LinkTitleSource(val link: String, val title: String, val source: String)
 
 data class DecodedLink(val link: String, val originalLink: String, val source: String? = null)
 

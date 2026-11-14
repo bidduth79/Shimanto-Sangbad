@@ -514,7 +514,8 @@ class NewsRemoteDataSource @Inject constructor(
                                     articles.add(
                                         NewsArticle(
                                             link = finalLink,
-                                            title = cleanTitle,
+                                            // the raw title was needed above to find the publisher
+                                            title = HeadlineCleaner.clean(cleanTitle, finalSource),
                                             pubDate = pubDate,
                                             source = finalSource,
                                             // 0 = no readable date (only kept when dates are optional)

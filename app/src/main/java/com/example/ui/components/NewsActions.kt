@@ -17,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.example.data.NewsArticle
+import com.example.data.PublisherLinks
 import java.util.Locale
 
 /** The per-article actions every news list offers, wired once and passed down. */
@@ -30,12 +31,13 @@ class NewsActions(
 )
 
 /**
- * Builds [NewsActions]. [resolveLink] turns a Google News redirect into the publisher URL before
- * copying or sharing; [onOpen] shows the in-app reader.
+ * Builds [NewsActions]. [resolveLink] finds the newspaper's own address (never Google's or MSN's);
+ * sharing and copying send only that address. When it cannot be found, the headline and the
+ * paper's name go instead, so a story is never lost. [onOpen] shows the in-app reader.
  */
 @Composable
 fun rememberNewsActions(
-    resolveLink: (NewsArticle, (String) -> Unit) -> Unit,
+    resolveLink: (NewsArticle, (String?) -> Unit) -> Unit,
     onOpen: (NewsArticle) -> Unit,
     onToggleBookmark: (NewsArticle) -> Unit
 ): NewsActions {
@@ -46,12 +48,17 @@ fun rememberNewsActions(
         open = onOpen,
         copyLink = { article ->
             resolveLink(article) { url ->
-                context.copyToClipboard("News Link", url)
-                context.toast(R.string.toast_news_link_copied)
+                if (url != null) {
+                    context.copyToClipboard("News Link", url)
+                    context.toast(R.string.toast_news_link_copied)
+                } else {
+                    context.copyToClipboard("News", PublisherLinks.fallbackText(article))
+                    context.toast(R.string.toast_link_missing_copied_title)
+                }
             }
         },
         shareToWhatsApp = { article ->
-            resolveLink(article) { url -> context.shareToWhatsApp("${article.title}\n$url") }
+            resolveLink(article) { url -> context.shareToWhatsApp(url ?: PublisherLinks.fallbackText(article)) }
         },
         toggleBookmark = { article ->
             onToggleBookmark(article)

@@ -162,6 +162,7 @@ class NewsViewModel @Inject constructor(
             enrichJob?.cancel()
             enrichJob = viewModelScope.launch {
                 runCatching { preResolveTopLinks() }
+                runCatching { newsRepository.prepareWidgetLinks() }
                 runCatching { newsRepository.fillMissingImages() }
             }
         }
@@ -204,10 +205,13 @@ class NewsViewModel @Inject constructor(
         viewModelScope.launch { settingsRepository.markLinkVisited(article.link) }
     }
 
-    /** Resolves the publisher URL behind a Google News link (cached) and hands it to [onResolved]. */
-    fun resolveLink(article: NewsArticle, onResolved: (String) -> Unit) {
+    /**
+     * The newspaper's own address for [article] (never Google's or MSN's), or null when it cannot
+     * be found right now; [onResolved] runs on the main thread.
+     */
+    fun resolveLink(article: NewsArticle, onResolved: (String?) -> Unit) {
         viewModelScope.launch {
-            onResolved(linkDecoder.resolve(article.originalLink ?: article.link))
+            onResolved(runCatching { newsRepository.publisherLinkFor(article) }.getOrNull())
         }
     }
 

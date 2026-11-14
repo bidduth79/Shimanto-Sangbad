@@ -34,42 +34,34 @@ import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
-import com.example.MainActivity
 import com.example.R
-import com.example.data.KeywordMatcher
-import com.example.data.NewsAlerts
 import com.example.data.NewsArticle
 import com.example.data.NewsFilters
 import com.example.data.NewsSourceKinds
+import com.example.data.WidgetStories
 import com.example.data.local.NewsDao
-import com.example.data.settings.SettingsRepository
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 
-/** Home-screen widget: the latest on-topic border headlines; a tap opens that story in the app. */
+/**
+ * Home-screen widget: today's BGB/BSF headlines. A headline tap opens the newspaper's article in
+ * the browser; the green button sends its link to WhatsApp.
+ */
 class BorderNewsWidget : GlanceAppWidget() {
 
     @EntryPoint
     @InstallIn(SingletonComponent::class)
     interface Deps {
         fun newsDao(): NewsDao
-        fun settingsRepository(): SettingsRepository
     }
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val deps = EntryPointAccessors.fromApplication(context.applicationContext, Deps::class.java)
         val now = System.currentTimeMillis()
-        // Today's stories only, like everywhere else in the app
-        val headlines = deps.newsDao().getRecent(NewsFilters.startOfToday(now))
-            .asSequence()
-            .filter { it.timestamp <= now + 10 * 60_000 }
-            // Only BGB and BSF stories (their aliases included: BGB, বর্ডার গার্ড, BSF…)
-            .filter { KeywordMatcher.matches(it.title, WIDGET_KEYWORDS) }
-            .distinctBy { NewsFilters.headlineKey(it.title) }
-            .take(MAX_ITEMS)
-            .toList()
+        // Today's BGB/BSF stories only (see WidgetStories)
+        val headlines = WidgetStories.select(deps.newsDao().getRecent(NewsFilters.startOfToday(now)), now)
 
         provideContent { WidgetContent(context, headlines, now) }
     }
@@ -83,7 +75,7 @@ class BorderNewsWidget : GlanceAppWidget() {
                 .cornerRadius(22.dp)
                 .padding(14.dp)
         ) {
-            // Nothing here opens anything: the only control is each story's WhatsApp button
+            // Header: no action. Each story: headline opens the newspaper, button shares its link
             Row(verticalAlignment = Alignment.CenterVertically, modifier = GlanceModifier.fillMaxWidth()) {
                 Image(ImageProvider(R.drawable.bgb_emblem_header), contentDescription = null, modifier = GlanceModifier.size(28.dp))
                 Spacer(GlanceModifier.width(8.dp))
@@ -102,7 +94,12 @@ class BorderNewsWidget : GlanceAppWidget() {
                             modifier = GlanceModifier.fillMaxWidth().padding(vertical = 5.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(modifier = GlanceModifier.defaultWeight()) {
+                            // Tapping the headline opens the newspaper's article in the browser
+                            Column(
+                                modifier = GlanceModifier
+                                    .defaultWeight()
+                                    .clickable(actionStartActivity(storyIntent(context, article, WidgetLinkActivity.ACTION_OPEN)))
+                            ) {
                                 Text(
                                     article.title,
                                     maxLines = 2,
@@ -123,7 +120,7 @@ class BorderNewsWidget : GlanceAppWidget() {
                                     .cornerRadius(20.dp)
                                     .background(BUTTON)
                                     .padding(9.dp)
-                                    .clickable(actionStartActivity(whatsAppIntent(context, article)))
+                                    .clickable(actionStartActivity(storyIntent(context, article, WidgetLinkActivity.ACTION_SHARE)))
                             )
                         }
                     }
@@ -133,13 +130,16 @@ class BorderNewsWidget : GlanceAppWidget() {
     }
 
     /**
-     * The WhatsApp button goes through [WhatsAppShareActivity], which opens WhatsApp's "send to"
-     * screen with the headline and link (a widget cannot do that directly; see that class).
+     * Both widget taps go through [WidgetLinkActivity], which finds the newspaper's own address:
+     * [WidgetLinkActivity.ACTION_OPEN] opens it in the browser, [WidgetLinkActivity.ACTION_SHARE]
+     * sends only that address to WhatsApp.
      */
-    private fun whatsAppIntent(context: Context, article: NewsArticle): Intent =
-        Intent(context, WhatsAppShareActivity::class.java).apply {
+    private fun storyIntent(context: Context, article: NewsArticle, action: String): Intent =
+        Intent(context, WidgetLinkActivity::class.java).apply {
+            this.action = action
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            putExtra(WhatsAppShareActivity.EXTRA_TEXT, article.title + '\n' + (article.originalLink ?: article.link))
+            putExtra(WidgetLinkActivity.EXTRA_LINK, article.link)
+            putExtra(WidgetLinkActivity.EXTRA_TITLE, article.title)
         }
 
     /**
@@ -153,12 +153,7 @@ class BorderNewsWidget : GlanceAppWidget() {
         return java.text.SimpleDateFormat(pattern, java.util.Locale.forLanguageTag("bn-BD")).format(java.util.Date(timestamp))
     }
 
-    private fun bengali(n: Long) = n.toString().map { if (it in '0'..'9') '০' + (it - '0') else it }.joinToString("")
-
     companion object {
-        /** Every fresh story is listed; the cap only guards the system's size limit for widgets. */
-        private const val MAX_ITEMS = 100
-        private val WIDGET_KEYWORDS = listOf("বিজিবি", "বিএসএফ")
         private val BUTTON = ColorProvider(Color(0x3325D366))
         private const val DAY_MILLIS = 24L * 60 * 60 * 1000
         private val BACKGROUND = ColorProvider(Color(0xF00A0F1C))

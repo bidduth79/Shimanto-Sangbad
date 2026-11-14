@@ -213,7 +213,7 @@ fun VideoCard(
                     val context = LocalContext.current
                     CardAction(Icons.AutoMirrored.Filled.OpenInNew, stringResource(R.string.video_youtube), scheme.onSurfaceVariant, onExternalPlay)
                     CardAction(Icons.AutoMirrored.Filled.Send, stringResource(R.string.news_share_whatsapp), Color(0xFF25D366)) {
-                        if (videoId.isNotBlank()) context.shareToWhatsApp("$title\nhttps://www.youtube.com/watch?v=$videoId")
+                        if (videoId.isNotBlank()) context.shareToWhatsApp("https://www.youtube.com/watch?v=$videoId")
                     }
                     CardAction(Icons.Default.ContentCopy, stringResource(R.string.action_copy_link), scheme.primary) {
                         if (videoId.isNotBlank()) {

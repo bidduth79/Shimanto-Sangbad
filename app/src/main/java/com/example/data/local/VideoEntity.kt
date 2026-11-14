@@ -30,7 +30,8 @@ data class VideoEntity(
         return YouTubeSearchResult(
             id = YouTubeVideoId(videoId = videoId),
             snippet = YouTubeSnippet(
-                title = title,
+                // cached rows from before the cleaner existed are tidied on the way out
+                title = com.example.data.HeadlineCleaner.clean(title, channelTitle),
                 description = description,
                 channelTitle = channelTitle,
                 channelId = channelId,
@@ -71,7 +72,7 @@ data class VideoEntity(
             val s = result.snippet ?: return null
             return VideoEntity(
                 videoId = id,
-                title = s.title.orEmpty(),
+                title = com.example.data.HeadlineCleaner.clean(s.title.orEmpty(), s.channelTitle.orEmpty()),
                 description = s.description.orEmpty(),
                 channelTitle = s.channelTitle.orEmpty(),
                 channelId = s.channelId,

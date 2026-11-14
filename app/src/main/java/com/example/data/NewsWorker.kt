@@ -35,6 +35,7 @@ class NewsWorker @AssistedInject constructor(
             Log.d(TAG, "Background news sync finished")
         }
         runCatching { newsAlerts.checkAndNotify() }
+        runCatching { newsRepository.prepareWidgetLinks() }
         com.example.widget.BorderNewsWidget.refreshAll(applicationContext)
         // Videos too, so the video tab opens with fresh ones (skipped if the app just did it)
         Log.d(TAG, "Background video sync: ${videoSync.sync(minIntervalMillis = SKIP_IF_SYNCED_WITHIN_MILLIS)}")

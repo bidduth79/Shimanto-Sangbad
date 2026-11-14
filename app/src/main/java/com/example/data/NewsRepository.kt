@@ -33,7 +33,8 @@ class NewsRepository @Inject constructor(
     private val cloudBackup: FirebaseManager,
     private val imageFetcher: ArticleImageFetcher,
     private val linkDecoder: GoogleNewsDecoder,
-    private val settingsRepository: com.example.data.settings.SettingsRepository
+    private val settingsRepository: com.example.data.settings.SettingsRepository,
+    private val publisherLinks: PublisherLinks
 ) {
     /** At most this many requests in flight across all regions, so refreshes don't starve the device. */
     private val requestPermits = Semaphore(MAX_PARALLEL_REQUESTS)
@@ -136,33 +137,69 @@ class NewsRepository @Inject constructor(
      * GMT) and of the feeds that label local time as UTC.
      */
     suspend fun repairStoredData() = repairLock.withLock {
-        if (settingsRepository.dataFixVersion() >= DATA_FIX_VERSION) return@withLock
+        val done = settingsRepository.dataFixVersion()
+        if (done >= DATA_FIX_VERSION) return@withLock
         withContext(Dispatchers.IO) {
-            val now = System.currentTimeMillis()
-            val pacificBehindUtc = -java.util.TimeZone.getTimeZone("America/Los_Angeles").getOffset(now).toLong()
-            dao.shiftBingTimesForward(pacificBehindUtc, now)
-            val mislabelled = NewsSources.newspaperFeeds.filter { it.localTimeLabelledUtc }
-                .map { "${NewsSources.NEWSPAPER_SOURCE_PREFIX} • ${it.name}" }
-            if (mislabelled.isNotEmpty()) dao.shiftTimesBack(mislabelled, FeedClock.BANGLADESH_OFFSET_MILLIS)
+            if (done < 1) {
+                val now = System.currentTimeMillis()
+                val pacificBehindUtc = -java.util.TimeZone.getTimeZone("America/Los_Angeles").getOffset(now).toLong()
+                dao.shiftBingTimesForward(pacificBehindUtc, now)
+                val mislabelled = NewsSources.newspaperFeeds.filter { it.localTimeLabelledUtc }
+                    .map { "${NewsSources.NEWSPAPER_SOURCE_PREFIX} • ${it.name}" }
+                if (mislabelled.isNotEmpty()) dao.shiftTimesBack(mislabelled, FeedClock.BANGLADESH_OFFSET_MILLIS)
+            }
+            if (done < 2) {
+                // v2: headlines stored before HeadlineCleaner existed are tidied once
+                val changed = dao.getAllTitles().mapNotNull { row ->
+                    val clean = HeadlineCleaner.clean(row.title, row.source.substringAfter(" • "))
+                    if (clean != row.title) row.link to clean else null
+                }
+                changed.chunked(200).forEach { dao.setTitles(it.toMap()) }
+            }
         }
         settingsRepository.setDataFixVersion(DATA_FIX_VERSION)
     }
 
+    /** True when [article] is stored with a search engine's or aggregator's address. */
+    private fun needsResolving(article: NewsArticle): Boolean {
+        val url = article.originalLink ?: article.link
+        return PublisherLinks.isGoogleNews(url) || PublisherLinks.isMsnCopy(url)
+    }
+
     /**
-     * Decodes Google links of [articles] (ten per request) and stores the publisher addresses, so
-     * copy/share are instant and Facebook posts show which page they came from.
+     * Finds the newspaper addresses behind Google News links (ten per request) and MSN copies of
+     * [articles] and stores them, so copy/share/open are instant and Facebook posts show which
+     * page they came from. Returns old address → newspaper address.
      */
     suspend fun resolveLinks(articles: List<NewsArticle>): Map<String, String> = withContext(Dispatchers.IO) {
-        val google = articles.filter { imageFetcher.needsGoogleDecode(it) }
-        if (google.isEmpty()) return@withContext emptyMap()
-        val decoded = linkDecoder.resolveAll(google.map { it.originalLink ?: it.link })
-        dao.setDecoded(google.mapNotNull { article ->
-            val target = decoded[article.originalLink ?: article.link]?.takeIf { !linkDecoder.isGoogleOwned(it) }
-                ?: return@mapNotNull null
+        val pending = articles.filter(::needsResolving)
+        if (pending.isEmpty()) return@withContext emptyMap()
+        val decoded = publisherLinks.resolveAll(pending.map { it.originalLink ?: it.link })
+        dao.setDecoded(pending.mapNotNull { article ->
+            val target = decoded[article.originalLink ?: article.link] ?: return@mapNotNull null
             val pageSource = if (article.category == NewsFilters.CATEGORY_FACEBOOK) FacebookPages.sourceFor(target) else null
             com.example.data.local.DecodedLink(article.link, target, pageSource)
         })
         decoded
+    }
+
+    /**
+     * The newspaper's own address for [article] (stored, or found now and stored), never a search
+     * engine's or aggregator's; null when it cannot be found right now.
+     */
+    suspend fun publisherLinkFor(article: NewsArticle): String? = withContext(Dispatchers.IO) {
+        val stored = dao.getByLink(article.link) ?: article
+        val url = stored.originalLink ?: stored.link
+        if (!needsResolving(stored)) {
+            return@withContext PublisherLinks.withoutTracking(url).takeIf { PublisherLinks.isPublisherLink(it) }
+        }
+        resolveLinks(listOf(stored))[url]
+    }
+
+    /** Looks up the newspaper addresses of the widget's stories ahead of time (newest first). */
+    suspend fun prepareWidgetLinks() = withContext(Dispatchers.IO) {
+        val stories = WidgetStories.select(dao.getRecent(NewsFilters.startOfToday()))
+        resolveLinks(stories.filter(::needsResolving).take(MAX_WIDGET_LINK_LOOKUPS))
     }
 
     suspend fun syncCustomFeeds(feeds: List<RssFeedItem>) {
@@ -219,7 +256,7 @@ class NewsRepository @Inject constructor(
 
         // 2) Network: direct publisher pages freely; Google links only a few per run, because
         //    their decoding is rate-limited and the same decoding powers "copy link" and sharing
-        val (google, direct) = missing.filter { it.link !in borrowed }.partition { imageFetcher.needsGoogleDecode(it) }
+        val (google, direct) = missing.filter { it.link !in borrowed }.partition(::needsResolving)
         val (facebook, googleNews) = google.partition { it.category == NewsFilters.CATEGORY_FACEBOOK }
         val toDecode = googleNews.take(MAX_GOOGLE_NEWS_DECODES) + facebook.take(MAX_FACEBOOK_DECODES)
         val decoded = resolveLinks(toDecode)
@@ -331,6 +368,7 @@ class NewsRepository @Inject constructor(
         /** Whole-day searches change slowly; the newest-headlines searches run on every refresh. */
         const val DEEP_INTERVAL_MILLIS = 30L * 60 * 1000
         const val BING_INTERVAL_MILLIS = 9L * 60 * 1000
-        const val DATA_FIX_VERSION = 1
+        const val DATA_FIX_VERSION = 2
+        const val MAX_WIDGET_LINK_LOOKUPS = 60
     }
 }

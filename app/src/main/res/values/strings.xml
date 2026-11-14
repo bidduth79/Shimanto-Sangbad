@@ -197,6 +197,9 @@
     <string name="widget_name">সীমান্ত সংবাদ</string>
     <string name="widget_description">হোম স্ক্রিনে সর্বশেষ সীমান্ত-খবর</string>
     <string name="widget_subtitle">বিজিবি ও বিএসএফের নতুন খবর</string>
+    <string name="toast_link_missing_copied_title">পত্রিকার লিংক পাওয়া যায়নি — শিরোনাম ও পত্রিকার নাম কপি হয়েছে</string>
+    <string name="widget_link_searching">পত্রিকার লিংক খোঁজা হচ্ছে…</string>
+    <string name="widget_browser_missing">ব্রাউজার খোলা যায়নি</string>
     <string name="widget_whatsapp_missing">এই ফোনে হোয়াটসঅ্যাপ পাওয়া যায়নি</string>
     <string name="widget_empty">এখনো কোনো খবর নেই — অ্যাপ খুলে রিফ্রেশ করুন</string>
     <string name="widget_minutes_ago">%1$s মিনিট আগে</string>
